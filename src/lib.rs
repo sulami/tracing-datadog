@@ -1,14 +1,20 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+use tracing_subscriber::Layer;
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+/// A [`Layer`] that sends traces to DataDog.
+///
+/// ```
+/// # use tracing_subscriber::prelude::*;
+/// # use tracing_datadog::DataDogTraceLayer;
+/// tracing_subscriber::registry()
+///   .with(DataDogTraceLayer::new())
+///   .init();
+/// ```
+pub struct DataDogTraceLayer;
 
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
+impl DataDogTraceLayer {
+    pub fn new() -> Self {
+        Self
     }
 }
+
+impl<S: tracing::Subscriber> Layer<S> for DataDogTraceLayer {}
