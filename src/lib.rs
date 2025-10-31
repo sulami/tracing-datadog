@@ -1,5 +1,6 @@
 use rmp_serde::Serializer;
 use serde::Serialize;
+use std::marker::PhantomData;
 use std::{
     collections::HashMap,
     sync::Arc,
@@ -8,7 +9,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing_core::{
-    Field, Subscriber,
+    Dispatch, Field, Subscriber,
     field::Visit,
     span::{Attributes, Id, Record},
 };
@@ -23,15 +24,21 @@ use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
 ///   .with(DataDogTraceLayer::new("service", "env", "version", "localhost:8126"))
 ///   .init();
 /// ```
-pub struct DataDogTraceLayer {
+pub struct DataDogTraceLayer<S> {
     buffer: Arc<Mutex<Vec<DataDogSpan>>>,
     service: String,
     env: String,
     version: String,
+    #[cfg(feature = "http")]
+    get_context: http::WithContext,
     exporter_thread: Option<JoinHandle<()>>,
+    _registry: PhantomData<S>,
 }
 
-impl DataDogTraceLayer {
+impl<S> DataDogTraceLayer<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
     pub fn new(
         service: impl Into<String>,
         env: impl Into<String>,
@@ -46,6 +53,8 @@ impl DataDogTraceLayer {
             service: service.into(),
             env: env.into(),
             version: version.into(),
+            #[cfg(feature = "http")]
+            get_context: http::WithContext(Self::get_context),
             exporter_thread: Some(spawn(move || {
                 let client = reqwest::blocking::Client::new();
                 loop {
@@ -70,17 +79,33 @@ impl DataDogTraceLayer {
                         .inspect_err(|error| println!("Error exporting spans: {error:?}"));
                 }
             })),
+            _registry: PhantomData,
+        }
+    }
+
+    fn get_context(dispatch: &Dispatch, id: &Id, f: &mut dyn FnMut(&mut DataDogSpan)) {
+        let subscriber = dispatch
+            .downcast_ref::<S>()
+            .expect("Subscriber did not downcast to expected type, this is a bug");
+        let span = subscriber.span(id).expect("Span not found, this is a bug");
+
+        let mut extensions = span.extensions_mut();
+        if let Some(dd_span) = extensions.get_mut::<DataDogSpan>() {
+            f(dd_span);
         }
     }
 }
 
-impl Drop for DataDogTraceLayer {
+impl<S> Drop for DataDogTraceLayer<S> {
     fn drop(&mut self) {
         self.exporter_thread.take().and_then(|t| t.join().ok());
     }
 }
 
-impl<S: Subscriber + for<'a> LookupSpan<'a>> Layer<S> for DataDogTraceLayer {
+impl<S> Layer<S> for DataDogTraceLayer<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
     fn on_new_span(&self, attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
@@ -240,5 +265,123 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
                     .insert(name.to_string(), format!("{value:?}"));
             }
         };
+    }
+}
+
+#[cfg(feature = "http")]
+pub mod http {
+    use crate::DataDogSpan;
+    use http::{HeaderMap, HeaderName};
+    use tracing_core::{Dispatch, span::Id};
+
+    /// The trace context for distributed tracing. This is a subset of the W3C trace context
+    /// which allows stitching together traces with spans from different services.
+    #[derive(Default)]
+    pub struct DataDogContext {
+        trace_id: u128,
+        parent_id: u64,
+    }
+
+    impl DataDogContext {
+        /// Parses a context for distributed tracing from W3C trace context headers.
+        pub fn from_w3c_headers(headers: &HeaderMap) -> Self {
+            Self::parse_w3c_headers(headers).unwrap_or_default()
+        }
+
+        fn parse_w3c_headers(headers: &HeaderMap) -> Option<Self> {
+            let header = headers.get("traceparent")?.to_str().ok()?;
+
+            let parts: Vec<&str> = header.split('-').collect();
+            if parts.len() != 4 {
+                return None;
+            }
+
+            let Some(0) = u8::from_str_radix(parts[0], 16).ok() else {
+                return None;
+            };
+
+            let trace_id = u128::from_str_radix(parts[1], 16).ok()?;
+            let parent_id = u64::from_str_radix(parts[2], 16).ok()?;
+
+            Some(Self {
+                trace_id,
+                parent_id,
+            })
+        }
+
+        /// Serializes a context for distributed tracing to W3C trace context headers.
+        pub fn to_w3c_headers(&self) -> HeaderMap {
+            let header = format!(
+                "{version:02x}-{trace_id:032x}-{parent_id:016x}-{trace_flags:02x}",
+                version = 0,
+                trace_id = self.trace_id,
+                parent_id = self.parent_id,
+                trace_flags = 1,
+            );
+
+            HeaderMap::from_iter([(
+                HeaderName::from_static("traceparent"),
+                header.parse().unwrap(),
+            )])
+        }
+    }
+
+    // This function "remembers" the types of the subscriber so that we can downcast to something
+    // aware of them without knowing those types at the call site. Adapted from tracing-error.
+    pub(crate) struct WithContext(
+        pub(crate) fn(&Dispatch, &Id, f: &mut dyn FnMut(&mut DataDogSpan)),
+    );
+
+    impl WithContext {
+        pub(crate) fn with_context(
+            &self,
+            dispatch: &Dispatch,
+            id: &Id,
+            mut f: &mut dyn FnMut(&mut DataDogSpan),
+        ) {
+            (self.0)(dispatch, id, &mut f);
+        }
+    }
+
+    pub trait DistributedTracingContext {
+        /// Gets the context for distributed tracing from the current span.
+        fn get_context(&self) -> DataDogContext;
+
+        /// Sets the context for distributed tracing on the current span.
+        fn set_context(&self, context: DataDogContext);
+    }
+
+    impl DistributedTracingContext for tracing::Span {
+        fn get_context(&self) -> DataDogContext {
+            let mut ctx = None;
+
+            self.with_subscriber(|(id, subscriber)| {
+                let Some(get_context) = subscriber.downcast_ref::<WithContext>() else {
+                    return;
+                };
+                get_context.with_context(subscriber, id, &mut |dd_span| {
+                    ctx = Some(DataDogContext {
+                        // NB Trace IDs can be 128-bit nowadays, but the 0.4 API still uses 64-bit.
+                        trace_id: dd_span.trace_id as u128,
+                        parent_id: dd_span.parent_id,
+                    })
+                });
+            });
+
+            ctx.unwrap_or_default()
+        }
+
+        fn set_context(&self, context: DataDogContext) {
+            self.with_subscriber(move |(id, subscriber)| {
+                let Some(get_context) = subscriber.downcast_ref::<WithContext>() else {
+                    return;
+                };
+                get_context.with_context(subscriber, id, &mut |dd_span| {
+                    // NB Trace IDs can be 128-bit nowadays, but the 0.4 API still uses 64-bit.
+                    dd_span.trace_id = context.trace_id as u64;
+                    dd_span.parent_id = context.parent_id;
+                })
+            });
+        }
     }
 }

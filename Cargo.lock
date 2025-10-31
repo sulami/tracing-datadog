@@ -799,10 +799,12 @@ dependencies = [
 name = "tracing-datadog"
 version = "0.1.0"
 dependencies = [
+ "http",
  "rand",
  "reqwest",
  "rmp-serde",
  "serde",
+ "tracing",
  "tracing-core",
  "tracing-subscriber",
 ]
