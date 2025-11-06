@@ -34,7 +34,24 @@ tracing_subscriber::registry()
 
 Logs will be emitted to stdout in the DataDog JSON format.
 
+### Span tag semantics
+
+Certain span tags have special meaning in DataDog:
+
+- `service` - can be used to override the service on a per-span basis
+- `operation` - maps to DataDog APM operations
+- `resource` - maps to DataDog APM resources
+- `span.type` - defaults to `internal`, but can be set to `web` for request 
+  handlers, `http` for HTTP client requests, or any of `sql`, `cassandra`, 
+  `memcached`, `mongodb`, `elasticsearch`, `opensearch`, `redis`, or `db` for 
+  data store queries. `custom` can be used for any other type of span.
+
+There are few other semantic conventions, like the ones for [errors](https://docs.datadoghq.com/logs/error_tracking/backend).
+[This page](https://docs.datadoghq.com/opentelemetry/mapping/semantic_mapping)
+lists a lot of them.
+
 ### Distributed tracing over HTTP
 
 To enable distributed tracing over HTTP, enable the `http` feature and use
-`DataDogContext` to extract and inject trace context from/into HTTP headers.
+`DataDogContext` to extract and inject trace context from/into HTTP headers. 
+See the API documentation for examples.
