@@ -57,3 +57,14 @@ lists a lot of them.
 To enable distributed tracing over HTTP, enable the `http` feature and use
 `DataDogContext` to extract and inject trace context from/into HTTP headers. 
 See the API documentation for examples.
+
+## Prior Art
+
+Some code has been adopted for the following projects:
+
+- [tracing-opentelemetry](https://github.com/tokio-rs/tracing-opentelemetry)
+- [DatadogFormattingLayer](https://github.com/open-schnick/DatadogFormattingLayer/)
+- [fastrace-datadog](https://github.com/fast/fastrace/tree/main/fastrace-datadog)
+
+See also [komoju-datadog](https://github.com/komoju/komoju-datadog) for 
+opinionated usage of this library.
