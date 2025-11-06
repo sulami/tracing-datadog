@@ -5,7 +5,7 @@ use rmp_serde::Serializer as MpSerializer;
 use serde::{Serialize, Serializer};
 use std::{
     collections::HashMap,
-    fmt::Write,
+    fmt::{Debug, Display, Formatter, Write},
     marker::PhantomData,
     sync::{Arc, Mutex, mpsc},
     thread::{sleep, spawn},
@@ -28,8 +28,16 @@ use tracing_subscriber::{
 /// # use tracing_subscriber::prelude::*;
 /// # use tracing_datadog::DataDogTraceLayer;
 /// tracing_subscriber::registry()
-///   .with(DataDogTraceLayer::new("service", "env", "version", "localhost:8126"))
-///   .init();
+///    .with(
+///        DataDogTraceLayer::builder()
+///            .service("my-service")
+///            .env("production")
+///            .version("git sha")
+///            .agent_address("localhost:8126")
+///            .build()
+///            .expect("failed to build DataDogTraceLayer"),
+///    )
+///    .init();
 /// ```
 pub struct DataDogTraceLayer<S> {
     buffer: Arc<Mutex<Vec<DataDogSpan>>>,
@@ -47,73 +55,17 @@ impl<S> DataDogTraceLayer<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    /// Creates a new [`DataDogTraceLayer`].
-    ///
-    /// `service`, `env`, and `version` are global tags injected into all spans.
-    ///
-    /// `agent_address` should be in the format `host:port`.
-    pub fn new(
-        service: impl Into<String>,
-        env: impl Into<String>,
-        version: impl Into<String>,
-        agent_address: impl Into<String>,
-    ) -> Self {
-        let buffer = Arc::new(Mutex::new(Vec::new()));
-        let exporter_buffer = buffer.clone();
-        let url = format!("http://{}/v0.4/traces", agent_address.into());
-        let (tx, rx) = mpsc::channel();
-
-        spawn(move || {
-            let client = reqwest::blocking::Client::new();
-            loop {
-                if rx.try_recv().is_ok() {
-                    break;
-                }
-
-                sleep(Duration::from_secs(5));
-
-                let spans = exporter_buffer
-                    .lock()
-                    .unwrap()
-                    .drain(..)
-                    .collect::<Vec<_>>();
-                if spans.is_empty() {
-                    continue;
-                }
-
-                let mut body = vec![0b10010001];
-                let _ = spans
-                    .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
-                    .inspect_err(|error| println!("Error serializing spans: {error:?}"));
-
-                let _ = client
-                    .post(&url)
-                    .header("Datadog-Meta-Tracer-Version", "v1.27.0")
-                    .header("Content-Type", "application/msgpack")
-                    .body(body)
-                    .send()
-                    .inspect_err(|error| println!("Error exporting spans: {error:?}"));
-            }
-        });
-
-        Self {
-            buffer,
-            service: service.into(),
-            env: env.into(),
-            version: version.into(),
+    /// Creates a builder to construct a [`DataDogTraceLayer`].
+    pub fn builder() -> DataDogTraceLayerBuilder<S> {
+        DataDogTraceLayerBuilder {
+            service: None,
+            env: None,
+            version: None,
+            agent_address: None,
+            container_id: None,
             logging_enabled: false,
-            #[cfg(feature = "http")]
-            with_context: http::WithContext(Self::get_context),
-            shutdown: tx,
-            _registry: PhantomData,
+            phantom_data: Default::default(),
         }
-    }
-
-    /// Enables log output to stdout in a format compatible with DataDog, including log correlation
-    /// to APM.
-    pub fn with_logs(mut self) -> Self {
-        self.logging_enabled = true;
-        self
     }
 
     #[cfg(feature = "http")]
@@ -292,6 +244,154 @@ where
             }
             _ => None,
         }
+    }
+}
+
+/// A builder for [`DataDogTraceLayer`].
+pub struct DataDogTraceLayerBuilder<S> {
+    service: Option<String>,
+    env: Option<String>,
+    version: Option<String>,
+    agent_address: Option<String>,
+    container_id: Option<String>,
+    logging_enabled: bool,
+    phantom_data: PhantomData<S>,
+}
+
+/// An error that can occur when building a [`DataDogTraceLayer`].
+#[derive(Debug)]
+pub struct BuilderError(&'static str);
+
+impl Display for BuilderError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.0)
+    }
+}
+
+impl std::error::Error for BuilderError {}
+
+impl<S> DataDogTraceLayerBuilder<S>
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    /// Sets the `service`. This is required.
+    pub fn service(mut self, service: impl Into<String>) -> Self {
+        self.service = Some(service.into());
+        self
+    }
+
+    /// Sets the `env`. This is required.
+    pub fn env(mut self, env: impl Into<String>) -> Self {
+        self.env = Some(env.into());
+        self
+    }
+
+    /// Sets the `version`. This is required.
+    pub fn version(mut self, version: impl Into<String>) -> Self {
+        self.version = Some(version.into());
+        self
+    }
+
+    /// Sets the `agent_address`. This is required.
+    pub fn agent_address(mut self, agent_address: impl Into<String>) -> Self {
+        self.agent_address = Some(agent_address.into());
+        self
+    }
+
+    /// Sets the container ID. This enables infrastructure metrics in APM for supported platforms.
+    pub fn container_id(mut self, container_id: impl Into<String>) -> Self {
+        self.container_id = Some(container_id.into());
+        self
+    }
+
+    /// Enables or disables structured logging with trace correlation to stdout.
+    /// Disabled by default.
+    pub fn enable_logs(mut self, enable_logs: bool) -> Self {
+        self.logging_enabled = enable_logs;
+        self
+    }
+
+    /// Consumes the builder to construct the tracing layer.
+    pub fn build(self) -> Result<DataDogTraceLayer<S>, BuilderError> {
+        let Some(service) = self.service else {
+            return Err(BuilderError("service is required"));
+        };
+        let Some(env) = self.env else {
+            return Err(BuilderError("env is required"));
+        };
+        let Some(version) = self.version else {
+            return Err(BuilderError("version is required"));
+        };
+        let Some(agent_address) = self.agent_address else {
+            return Err(BuilderError("agent_address is required"));
+        };
+        let container_id = match self.container_id {
+            Some(s) => Some(
+                s.parse::<reqwest::header::HeaderValue>()
+                    .map_err(|_| BuilderError("Failed to parse container ID into header"))?,
+            ),
+            _ => None,
+        };
+
+        let buffer = Arc::new(Mutex::new(Vec::new()));
+        let exporter_buffer = buffer.clone();
+        let url = format!("http://{}/v0.4/traces", agent_address);
+        let (tx, rx) = mpsc::channel();
+
+        spawn(move || {
+            let client = {
+                let mut builder = reqwest::blocking::Client::builder();
+                if let Some(container_id) = container_id {
+                    builder = builder.default_headers(reqwest::header::HeaderMap::from_iter([(
+                        reqwest::header::HeaderName::from_static("Datadog-Container-ID"),
+                        container_id,
+                    )]));
+                };
+                builder.build().expect("Failed to build reqwest client")
+            };
+
+            loop {
+                if rx.try_recv().is_ok() {
+                    break;
+                }
+
+                sleep(Duration::from_secs(5));
+
+                let spans = exporter_buffer
+                    .lock()
+                    .unwrap()
+                    .drain(..)
+                    .collect::<Vec<_>>();
+                if spans.is_empty() {
+                    continue;
+                }
+
+                let mut body = vec![0b10010001];
+                let _ = spans
+                    .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
+                    .inspect_err(|error| println!("Error serializing spans: {error:?}"));
+
+                let _ = client
+                    .post(&url)
+                    .header("Datadog-Meta-Tracer-Version", "v1.27.0")
+                    .header("Content-Type", "application/msgpack")
+                    .body(body)
+                    .send()
+                    .inspect_err(|error| println!("Error exporting spans: {error:?}"));
+            }
+        });
+
+        Ok(DataDogTraceLayer {
+            buffer,
+            service,
+            env,
+            version,
+            logging_enabled: self.logging_enabled,
+            #[cfg(feature = "http")]
+            with_context: http::WithContext(DataDogTraceLayer::<S>::get_context),
+            shutdown: tx,
+            _registry: PhantomData,
+        })
     }
 }
 
@@ -572,12 +672,15 @@ pub mod http {
         #[test]
         fn span_context_round_trip() {
             tracing::subscriber::with_default(
-                tracing_subscriber::registry().with(DataDogTraceLayer::new(
-                    "test-service",
-                    "test",
-                    "version",
-                    "localhost:8126",
-                )),
+                tracing_subscriber::registry().with(
+                    DataDogTraceLayer::builder()
+                        .service("test-service")
+                        .env("test")
+                        .version("test-version")
+                        .agent_address("localhost:8126")
+                        .build()
+                        .unwrap(),
+                ),
                 || {
                     let context = DataDogContext {
                         // Need to limit the size here as we only track 64-bit trace IDs.

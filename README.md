@@ -5,6 +5,7 @@ A `tracing` exporter layer for DataDog, without dependencies on `opentelemetry`.
 - Exporter for `tracing` traces to DataDog APM
 - (Optional) DataDog-compatible log formatting and APM ↔ log correlation
 - (Optional) Distributed tracing support for HTTP requests via W3C Trace Context headers
+- (Optional) Container-ID tracking for infrastructure metrics in APM
 
 ## Features
 
@@ -20,16 +21,17 @@ use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
 use tracing_datadog::DataDogTraceLayer;
 
 tracing_subscriber::registry()
-    .with(
-       DataDogTraceLayer::new(
-           "my-service",
-           "production",
-           "git-sha",
-           "localhost:8126",
-       )
-       .with_logs(),
-    )
-    .init();
+   .with(
+       DataDogTraceLayer::builder()
+           .service("my-service")
+           .env("production")
+           .version("git sha")
+           .agent_address("localhost:8126")
+           .enable_logs(true)
+           .build()
+           .expect("failed to build DataDogTraceLayer"),
+   )
+   .init();
 ```
 
 Logs will be emitted to stdout in the DataDog JSON format.
