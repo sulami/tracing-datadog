@@ -1,8 +1,8 @@
 use rmp_serde::Serializer;
 use serde::Serialize;
-use std::marker::PhantomData;
 use std::{
     collections::HashMap,
+    marker::PhantomData,
     sync::Arc,
     sync::Mutex,
     thread::{JoinHandle, sleep, spawn},
@@ -30,6 +30,7 @@ pub struct DataDogTraceLayer<S> {
     env: String,
     version: String,
     #[cfg(feature = "http")]
+    #[cfg_attr(feature = "http", allow(unused))]
     get_context: http::WithContext,
     exporter_thread: Option<JoinHandle<()>>,
     _registry: PhantomData<S>,
@@ -168,14 +169,8 @@ where
         let now = epoch_ns();
 
         match extensions.get_mut::<DataDogSpan>() {
-            Some(dd_span) if dd_span.start != 0 => dd_span.start = now,
-            None => return,
+            Some(dd_span) if dd_span.start == 0 => dd_span.start = now,
             _ => {}
-        }
-
-        match extensions.get_mut::<LastEnter>() {
-            Some(last_enter) => last_enter.0 = now,
-            None => extensions.insert(LastEnter(now)),
         }
     }
 
@@ -185,12 +180,8 @@ where
 
         let now = epoch_ns();
 
-        let last_enter = extensions
-            .remove::<LastEnter>()
-            .expect("LastEnter not found, this is a bug");
-
         if let Some(dd_span) = extensions.get_mut::<DataDogSpan>() {
-            dd_span.duration += now - last_enter.0
+            dd_span.duration = now - dd_span.start
         }
     }
 
@@ -225,8 +216,6 @@ struct DataDogSpan {
     trace_id: u64,
     parent_id: u64,
 }
-
-struct LastEnter(i64);
 
 struct SpanAttributeVisitor<'a> {
     dd_span: &'a mut DataDogSpan,
