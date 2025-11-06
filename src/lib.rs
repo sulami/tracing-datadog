@@ -1,3 +1,5 @@
+#![doc = include_str!("../README.md")]
+
 use jiff::{Timestamp, Zoned};
 use rmp_serde::Serializer as MpSerializer;
 use serde::{Serialize, Serializer};
@@ -10,7 +12,7 @@ use std::{
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing_core::{
-    Dispatch, Event, Field, Level, Subscriber,
+    Event, Field, Level, Subscriber,
     field::Visit,
     span::{Attributes, Id, Record},
 };
@@ -46,12 +48,16 @@ impl<S> DataDogTraceLayer<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
+    /// Creates a new [`DataDogTraceLayer`].
+    ///
+    /// `service`, `env`, and `version` are global tags injected into all spans.
+    ///
+    /// `agent_address` should be in the format `host:port`.
     pub fn new(
         service: impl Into<String>,
         env: impl Into<String>,
         version: impl Into<String>,
         agent_address: impl Into<String>,
-        logging_enabled: bool,
     ) -> Self {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let url = format!("http://{}/v0.4/traces", agent_address.into());
@@ -61,7 +67,7 @@ where
             service: service.into(),
             env: env.into(),
             version: version.into(),
-            logging_enabled,
+            logging_enabled: false,
             #[cfg(feature = "http")]
             get_context: http::WithContext(Self::get_context),
             exporter_thread: Some(spawn(move || {
@@ -92,8 +98,19 @@ where
         }
     }
 
+    /// Enables log output to stdout in a format compatible with DataDog, including log correlation
+    /// to APM.
+    pub fn with_logs(mut self) -> Self {
+        self.logging_enabled = true;
+        self
+    }
+
     #[cfg(feature = "http")]
-    fn get_context(dispatch: &Dispatch, id: &Id, f: &mut dyn FnMut(&mut DataDogSpan)) {
+    fn get_context(
+        dispatch: &tracing_core::Dispatch,
+        id: &Id,
+        f: &mut dyn FnMut(&mut DataDogSpan),
+    ) {
         let subscriber = dispatch
             .downcast_ref::<S>()
             .expect("Subscriber did not downcast to expected type, this is a bug");
@@ -261,6 +278,7 @@ fn epoch_ns() -> i64 {
         .as_nanos() as i64
 }
 
+/// The v0.4 DataDog trace API format for spans. This is what we write to MessagePack.
 #[derive(Default, Debug, Serialize)]
 struct DataDogSpan {
     name: String,
@@ -276,6 +294,7 @@ struct DataDogSpan {
     parent_id: u64,
 }
 
+/// A visitor that converts tracing span attributes to a [`DataDogSpan`].
 struct SpanAttributeVisitor<'a> {
     dd_span: &'a mut DataDogSpan,
 }
@@ -291,7 +310,7 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
         // Strings are broken out because their debug representation includes quotation marks.
         match field.name() {
             "service" => self.dd_span.service = value.to_string(),
-            "span.kind" => self.dd_span.r#type = value.to_string(),
+            "span.type" => self.dd_span.r#type = value.to_string(),
             "operation" => self.dd_span.name = value.to_string(),
             "resource" => self.dd_span.resource = value.to_string(),
             name => {
@@ -305,7 +324,7 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
     fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
         match field.name() {
             "service" => self.dd_span.service = format!("{value:?}"),
-            "span.kind" => self.dd_span.r#type = format!("{value:?}"),
+            "span.type" => self.dd_span.r#type = format!("{value:?}"),
             "operation" => self.dd_span.name = format!("{value:?}"),
             "resource" => self.dd_span.resource = format!("{value:?}"),
             name => {
@@ -317,6 +336,7 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
     }
 }
 
+/// The DataDog structure log format. This is what we write to JSON.
 #[derive(Serialize)]
 struct DataDogLog {
     timestamp: Timestamp,
@@ -329,10 +349,12 @@ struct DataDogLog {
     span_id: Option<u64>,
 }
 
+/// Serializes a `Level` to a string, e.g. `"INFO"`.
 fn serialize_level<S: Serializer>(level: &Level, serializer: S) -> Result<S::Ok, S::Error> {
     serializer.serialize_str(level.as_str())
 }
 
+/// A visitor that collects tracing attributes into a map.
 #[derive(Default)]
 struct FieldVisitor {
     fields: HashMap<String, String>,
@@ -346,6 +368,7 @@ impl Visit for FieldVisitor {
 }
 
 #[cfg(feature = "http")]
+#[doc = "Functionality for working with distributed tracing HTTP headers"]
 pub mod http {
     use crate::DataDogSpan;
     use http::{HeaderMap, HeaderName};
@@ -361,6 +384,29 @@ pub mod http {
 
     impl DataDogContext {
         /// Parses a context for distributed tracing from W3C trace context headers.
+        ///
+        /// This would be useful in HTTP server middleware.
+        ///
+        /// ```
+        /// # let request = http::Request::builder().body(()).unwrap();
+        /// use tracing_datadog::http::{DataDogContext, DistributedTracingContext};
+        ///
+        /// // Construct a new span.
+        /// let span = tracing::info_span!("http.request");
+        ///
+        /// // Set the context on the span based on request headers.
+        /// span.set_context(DataDogContext::from_w3c_headers(request.headers()));
+        /// ```
+        ///
+        /// An alternative use case is setting the context on the current span, for example
+        /// within `#[instrument]`ed functions.
+        ///
+        /// ```
+        /// # let request = http::Request::builder().body(()).unwrap();
+        /// use tracing_datadog::http::{DataDogContext, DistributedTracingContext};
+        ///
+        /// tracing::Span::current().set_context(DataDogContext::from_w3c_headers(request.headers()));
+        /// ```
         pub fn from_w3c_headers(headers: &HeaderMap) -> Self {
             Self::parse_w3c_headers(headers).unwrap_or_default()
         }
@@ -387,6 +433,20 @@ pub mod http {
         }
 
         /// Serializes a context for distributed tracing to W3C trace context headers.
+        ///
+        /// ```
+        /// # use http::Request;
+        /// use tracing_datadog::http::DistributedTracingContext;
+        ///
+        /// // Build the request.
+        /// let mut request = Request::builder().body(()).unwrap();
+        ///
+        /// // Inject distributed tracing headers.
+        /// request.headers_mut().extend(tracing::Span::current().get_context().to_w3c_headers());
+        ///
+        /// // Execute the request.
+        /// // ..
+        /// ```
         pub fn to_w3c_headers(&self) -> HeaderMap {
             let header = format!(
                 "{version:02x}-{trace_id:032x}-{parent_id:016x}-{trace_flags:02x}",
