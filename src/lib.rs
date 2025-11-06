@@ -591,7 +591,8 @@ pub mod http {
     // This function "remembers" the types of the subscriber so that we can downcast to something
     // aware of them without knowing those types at the call site. Adapted from tracing-error.
     pub(crate) struct WithContext(
-        pub(crate) fn(&Dispatch, &Id, f: &mut dyn FnMut(&mut DataDogSpan)),
+        #[allow(clippy::type_complexity)]
+        pub(crate)  fn(&Dispatch, &Id, f: &mut dyn FnMut(&mut DataDogSpan)),
     );
 
     impl WithContext {
