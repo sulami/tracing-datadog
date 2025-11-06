@@ -8,7 +8,7 @@ repository = "https://github.com/sulami/tracing-datadog"
 license-file = "LICENSE"
 
 [features]
-default = []
+default = ["http"]
 http = ["dep:http"]
 
 [dependencies]

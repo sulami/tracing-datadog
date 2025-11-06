@@ -7,8 +7,8 @@ use std::{
     collections::HashMap,
     fmt::Write,
     marker::PhantomData,
-    sync::{Arc, Mutex},
-    thread::{JoinHandle, sleep, spawn},
+    sync::{Arc, Mutex, mpsc},
+    thread::{sleep, spawn},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing_core::{
@@ -38,9 +38,8 @@ pub struct DataDogTraceLayer<S> {
     version: String,
     logging_enabled: bool,
     #[cfg(feature = "http")]
-    #[cfg_attr(feature = "http", allow(unused))]
-    get_context: http::WithContext,
-    exporter_thread: Option<JoinHandle<()>>,
+    with_context: http::WithContext,
+    shutdown: mpsc::Sender<()>,
     _registry: PhantomData<S>,
 }
 
@@ -60,40 +59,52 @@ where
         agent_address: impl Into<String>,
     ) -> Self {
         let buffer = Arc::new(Mutex::new(Vec::new()));
+        let exporter_buffer = buffer.clone();
         let url = format!("http://{}/v0.4/traces", agent_address.into());
+        let (tx, rx) = mpsc::channel();
+
+        spawn(move || {
+            let client = reqwest::blocking::Client::new();
+            loop {
+                if rx.try_recv().is_ok() {
+                    break;
+                }
+
+                sleep(Duration::from_secs(5));
+
+                let spans = exporter_buffer
+                    .lock()
+                    .unwrap()
+                    .drain(..)
+                    .collect::<Vec<_>>();
+                if spans.is_empty() {
+                    continue;
+                }
+
+                let mut body = vec![0b10010001];
+                let _ = spans
+                    .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
+                    .inspect_err(|error| println!("Error serializing spans: {error:?}"));
+
+                let _ = client
+                    .post(&url)
+                    .header("Datadog-Meta-Tracer-Version", "v1.27.0")
+                    .header("Content-Type", "application/msgpack")
+                    .body(body)
+                    .send()
+                    .inspect_err(|error| println!("Error exporting spans: {error:?}"));
+            }
+        });
 
         Self {
-            buffer: buffer.clone(),
+            buffer,
             service: service.into(),
             env: env.into(),
             version: version.into(),
             logging_enabled: false,
             #[cfg(feature = "http")]
-            get_context: http::WithContext(Self::get_context),
-            exporter_thread: Some(spawn(move || {
-                let client = reqwest::blocking::Client::new();
-                loop {
-                    sleep(Duration::from_secs(5));
-
-                    let spans = buffer.lock().unwrap().drain(..).collect::<Vec<_>>();
-                    if spans.is_empty() {
-                        continue;
-                    }
-
-                    let mut body = vec![0b10010001];
-                    let _ = spans
-                        .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
-                        .inspect_err(|error| println!("Error serializing spans: {error:?}"));
-
-                    let _ = client
-                        .post(&url)
-                        .header("Datadog-Meta-Tracer-Version", "v1.27.0")
-                        .header("Content-Type", "application/msgpack")
-                        .body(body)
-                        .send()
-                        .inspect_err(|error| println!("Error exporting spans: {error:?}"));
-                }
-            })),
+            with_context: http::WithContext(Self::get_context),
+            shutdown: tx,
             _registry: PhantomData,
         }
     }
@@ -125,7 +136,7 @@ where
 
 impl<S> Drop for DataDogTraceLayer<S> {
     fn drop(&mut self) {
-        self.exporter_thread.take().and_then(|t| t.join().ok());
+        let _ = self.shutdown.send(());
     }
 }
 
@@ -269,8 +280,22 @@ where
             self.buffer.lock().unwrap().push(dd_span);
         }
     }
+
+    // SAFETY: This is safe because the `WithContext` function pointer is valid
+    // for the lifetime of `&self`.
+    #[cfg(feature = "http")]
+    unsafe fn downcast_raw(&self, id: std::any::TypeId) -> Option<*const ()> {
+        match id {
+            id if id == std::any::TypeId::of::<Self>() => Some(self as *const _ as *const ()),
+            id if id == std::any::TypeId::of::<http::WithContext>() => {
+                Some(&self.with_context as *const _ as *const ())
+            }
+            _ => None,
+        }
+    }
 }
 
+/// Returns the current system time as nanoseconds since 1970.
 fn epoch_ns() -> i64 {
     SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -376,7 +401,7 @@ pub mod http {
 
     /// The trace context for distributed tracing. This is a subset of the W3C trace context
     /// which allows stitching together traces with spans from different services.
-    #[derive(Default)]
+    #[derive(Copy, Clone, Default)]
     pub struct DataDogContext {
         trace_id: u128,
         parent_id: u64,
@@ -519,6 +544,56 @@ pub mod http {
                     dd_span.parent_id = context.parent_id;
                 })
             });
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+        use crate::DataDogTraceLayer;
+        use rand::random;
+        use tracing::info_span;
+        use tracing_subscriber::layer::SubscriberExt;
+
+        #[test]
+        fn w3c_trace_header_round_trip() {
+            let context = DataDogContext {
+                trace_id: random(),
+                parent_id: random(),
+            };
+
+            let headers = context.to_w3c_headers();
+            let parsed = DataDogContext::parse_w3c_headers(&headers).unwrap();
+
+            assert_eq!(context.trace_id, parsed.trace_id);
+            assert_eq!(context.parent_id, parsed.parent_id);
+        }
+
+        #[test]
+        fn span_context_round_trip() {
+            tracing::subscriber::with_default(
+                tracing_subscriber::registry().with(DataDogTraceLayer::new(
+                    "test-service",
+                    "test",
+                    "version",
+                    "localhost:8126",
+                )),
+                || {
+                    let context = DataDogContext {
+                        // Need to limit the size here as we only track 64-bit trace IDs.
+                        trace_id: random::<u64>() as u128,
+                        parent_id: random(),
+                    };
+
+                    let span = info_span!("test");
+
+                    span.set_context(context);
+                    let result = span.get_context();
+
+                    assert_eq!(context.trace_id, result.trace_id);
+                    assert_eq!(context.parent_id, result.parent_id);
+                },
+            );
         }
     }
 }
