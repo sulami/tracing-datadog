@@ -9,13 +9,15 @@ http = ["dep:http"]
 
 [dependencies]
 http = { version = "1", optional = true }
+jiff = { version = "0.2", features = ["serde"] }
 rand = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["blocking"] }
 rmp-serde = "1"
 serde = "1"
+serde_json = "1"
 tracing = { version = "0.1", default-features = false }
 tracing-core = { version = "0.1", default-features = false }
-tracing-subscriber = { version = "0.3", default-features = false }
+tracing-subscriber = { version = "0.3", default-features = false, features = ["std"] }
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "registry"] }

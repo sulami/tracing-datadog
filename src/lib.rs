@@ -1,19 +1,24 @@
-use rmp_serde::Serializer;
-use serde::Serialize;
+use jiff::{Timestamp, Zoned};
+use rmp_serde::Serializer as MpSerializer;
+use serde::{Serialize, Serializer};
 use std::{
     collections::HashMap,
+    fmt::Write,
     marker::PhantomData,
-    sync::Arc,
-    sync::Mutex,
+    sync::{Arc, Mutex},
     thread::{JoinHandle, sleep, spawn},
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing_core::{
-    Dispatch, Field, Subscriber,
+    Dispatch, Event, Field, Level, Subscriber,
     field::Visit,
     span::{Attributes, Id, Record},
 };
-use tracing_subscriber::{Layer, layer::Context, registry::LookupSpan};
+use tracing_subscriber::{
+    Layer,
+    layer::Context,
+    registry::{LookupSpan, Scope},
+};
 
 /// A [`Layer`] that sends traces to DataDog.
 ///
@@ -29,6 +34,7 @@ pub struct DataDogTraceLayer<S> {
     service: String,
     env: String,
     version: String,
+    logging_enabled: bool,
     #[cfg(feature = "http")]
     #[cfg_attr(feature = "http", allow(unused))]
     get_context: http::WithContext,
@@ -45,6 +51,7 @@ where
         env: impl Into<String>,
         version: impl Into<String>,
         agent_address: impl Into<String>,
+        logging_enabled: bool,
     ) -> Self {
         let buffer = Arc::new(Mutex::new(Vec::new()));
         let url = format!("http://{}/v0.4/traces", agent_address.into());
@@ -54,6 +61,7 @@ where
             service: service.into(),
             env: env.into(),
             version: version.into(),
+            logging_enabled,
             #[cfg(feature = "http")]
             get_context: http::WithContext(Self::get_context),
             exporter_thread: Some(spawn(move || {
@@ -68,7 +76,7 @@ where
 
                     let mut body = vec![0b10010001];
                     let _ = spans
-                        .serialize(&mut Serializer::new(&mut body).with_struct_map())
+                        .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
                         .inspect_err(|error| println!("Error serializing spans: {error:?}"));
 
                     let _ = client
@@ -84,6 +92,7 @@ where
         }
     }
 
+    #[cfg(feature = "http")]
     fn get_context(dispatch: &Dispatch, id: &Id, f: &mut dyn FnMut(&mut DataDogSpan)) {
         let subscriber = dispatch
             .downcast_ref::<S>()
@@ -162,6 +171,56 @@ where
         }
     }
 
+    fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
+        if !self.logging_enabled {
+            return;
+        }
+
+        let mut fields = {
+            let mut visitor = FieldVisitor::default();
+            event.record(&mut visitor);
+            visitor.fields
+        };
+
+        let mut message = fields.remove("message").unwrap_or_default();
+
+        fields.extend(
+            ctx.event_scope(event)
+                .into_iter()
+                .flat_map(Scope::from_root)
+                .flat_map(|span| match span.extensions().get::<DataDogSpan>() {
+                    Some(dd_span) => dd_span.meta.clone(),
+                    None => panic!("Span not found, this is a bug"),
+                }),
+        );
+
+        fields
+            .into_iter()
+            .try_for_each(|(k, v)| write!(&mut message, " {k}={v}"))
+            .expect("Failed to write message");
+
+        let (trace_id, span_id) = ctx
+            .lookup_current()
+            .and_then(|span| {
+                span.extensions()
+                    .get::<DataDogSpan>()
+                    .map(|dd_span| (Some(dd_span.trace_id), Some(dd_span.span_id)))
+            })
+            .unwrap_or_default();
+
+        let log = DataDogLog {
+            timestamp: Zoned::now().timestamp(),
+            level: event.metadata().level().to_owned(),
+            message,
+            trace_id,
+            span_id,
+        };
+
+        let serialized = serde_json::to_string(&log).expect("Failed to serialize log");
+
+        println!("{serialized}");
+    }
+
     fn on_enter(&self, id: &Id, ctx: Context<'_, S>) {
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
@@ -229,6 +288,7 @@ impl<'a> SpanAttributeVisitor<'a> {
 
 impl<'a> Visit for SpanAttributeVisitor<'a> {
     fn record_str(&mut self, field: &Field, value: &str) {
+        // Strings are broken out because their debug representation includes quotation marks.
         match field.name() {
             "service" => self.dd_span.service = value.to_string(),
             "span.kind" => self.dd_span.r#type = value.to_string(),
@@ -254,6 +314,34 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
                     .insert(name.to_string(), format!("{value:?}"));
             }
         };
+    }
+}
+
+#[derive(Serialize)]
+struct DataDogLog {
+    timestamp: Timestamp,
+    #[serde(serialize_with = "serialize_level")]
+    level: Level,
+    message: String,
+    #[serde(rename = "dd.trace_id", skip_serializing_if = "Option::is_none")]
+    trace_id: Option<u64>,
+    #[serde(rename = "dd.span_id", skip_serializing_if = "Option::is_none")]
+    span_id: Option<u64>,
+}
+
+fn serialize_level<S: Serializer>(level: &Level, serializer: S) -> Result<S::Ok, S::Error> {
+    serializer.serialize_str(level.as_str())
+}
+
+#[derive(Default)]
+struct FieldVisitor {
+    fields: HashMap<String, String>,
+}
+
+impl Visit for FieldVisitor {
+    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+        self.fields
+            .insert(field.name().to_string(), format!("{value:?}"));
     }
 }
 
@@ -328,7 +416,7 @@ pub mod http {
             id: &Id,
             mut f: &mut dyn FnMut(&mut DataDogSpan),
         ) {
-            (self.0)(dispatch, id, &mut f);
+            self.0(dispatch, id, &mut f);
         }
     }
 
