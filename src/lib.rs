@@ -22,25 +22,25 @@ use tracing_subscriber::{
     registry::{LookupSpan, Scope},
 };
 
-/// A [`Layer`] that sends traces to DataDog.
+/// A [`Layer`] that sends traces to Datadog.
 ///
 /// ```
 /// # use tracing_subscriber::prelude::*;
-/// # use tracing_datadog::DataDogTraceLayer;
+/// # use tracing_datadog::DatadogTraceLayer;
 /// tracing_subscriber::registry()
 ///    .with(
-///        DataDogTraceLayer::builder()
+///        DatadogTraceLayer::builder()
 ///            .service("my-service")
 ///            .env("production")
 ///            .version("git sha")
 ///            .agent_address("localhost:8126")
 ///            .build()
-///            .expect("failed to build DataDogTraceLayer"),
+///            .expect("failed to build DatadogTraceLayer"),
 ///    )
 ///    .init();
 /// ```
-pub struct DataDogTraceLayer<S> {
-    buffer: Arc<Mutex<Vec<DataDogSpan>>>,
+pub struct DatadogTraceLayer<S> {
+    buffer: Arc<Mutex<Vec<DatadogSpan>>>,
     service: String,
     env: String,
     version: String,
@@ -51,13 +51,13 @@ pub struct DataDogTraceLayer<S> {
     _registry: PhantomData<S>,
 }
 
-impl<S> DataDogTraceLayer<S>
+impl<S> DatadogTraceLayer<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    /// Creates a builder to construct a [`DataDogTraceLayer`].
-    pub fn builder() -> DataDogTraceLayerBuilder<S> {
-        DataDogTraceLayerBuilder {
+    /// Creates a builder to construct a [`DatadogTraceLayer`].
+    pub fn builder() -> DatadogTraceLayerBuilder<S> {
+        DatadogTraceLayerBuilder {
             service: None,
             env: None,
             version: None,
@@ -72,7 +72,7 @@ where
     fn get_context(
         dispatch: &tracing_core::Dispatch,
         id: &Id,
-        f: &mut dyn FnMut(&mut DataDogSpan),
+        f: &mut dyn FnMut(&mut DatadogSpan),
     ) {
         let subscriber = dispatch
             .downcast_ref::<S>()
@@ -80,19 +80,19 @@ where
         let span = subscriber.span(id).expect("Span not found, this is a bug");
 
         let mut extensions = span.extensions_mut();
-        if let Some(dd_span) = extensions.get_mut::<DataDogSpan>() {
+        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
             f(dd_span);
         }
     }
 }
 
-impl<S> Drop for DataDogTraceLayer<S> {
+impl<S> Drop for DatadogTraceLayer<S> {
     fn drop(&mut self) {
         let _ = self.shutdown.send(());
     }
 }
 
-impl<S> Layer<S> for DataDogTraceLayer<S>
+impl<S> Layer<S> for DatadogTraceLayer<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
@@ -105,12 +105,12 @@ where
             .and_then(|parent| {
                 parent
                     .extensions()
-                    .get::<DataDogSpan>()
+                    .get::<DatadogSpan>()
                     .map(|dd_span| dd_span.trace_id)
             })
             .unwrap_or(rand::random());
 
-        let mut dd_span = DataDogSpan {
+        let mut dd_span = DatadogSpan {
             name: span.name().to_string(),
             service: self.service.clone(),
             r#type: "internal".into(),
@@ -137,7 +137,7 @@ where
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
-        if let Some(dd_span) = extensions.get_mut::<DataDogSpan>() {
+        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
             values.record(&mut SpanAttributeVisitor::new(dd_span));
         }
     }
@@ -146,7 +146,7 @@ where
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
-        if let Some(dd_span) = extensions.get_mut::<DataDogSpan>() {
+        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
             dd_span.parent_id = follows.into_u64();
         }
     }
@@ -168,7 +168,7 @@ where
             ctx.event_scope(event)
                 .into_iter()
                 .flat_map(Scope::from_root)
-                .flat_map(|span| match span.extensions().get::<DataDogSpan>() {
+                .flat_map(|span| match span.extensions().get::<DatadogSpan>() {
                     Some(dd_span) => dd_span.meta.clone(),
                     None => panic!("Span not found, this is a bug"),
                 }),
@@ -183,12 +183,12 @@ where
             .lookup_current()
             .and_then(|span| {
                 span.extensions()
-                    .get::<DataDogSpan>()
+                    .get::<DatadogSpan>()
                     .map(|dd_span| (Some(dd_span.trace_id), Some(dd_span.span_id)))
             })
             .unwrap_or_default();
 
-        let log = DataDogLog {
+        let log = DatadogLog {
             timestamp: Zoned::now().timestamp(),
             level: event.metadata().level().to_owned(),
             message,
@@ -207,7 +207,7 @@ where
 
         let now = epoch_ns();
 
-        match extensions.get_mut::<DataDogSpan>() {
+        match extensions.get_mut::<DatadogSpan>() {
             Some(dd_span) if dd_span.start == 0 => dd_span.start = now,
             _ => {}
         }
@@ -219,7 +219,7 @@ where
 
         let now = epoch_ns();
 
-        if let Some(dd_span) = extensions.get_mut::<DataDogSpan>() {
+        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
             dd_span.duration = now - dd_span.start
         }
     }
@@ -228,7 +228,7 @@ where
         let span = ctx.span(&id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
-        if let Some(dd_span) = extensions.remove::<DataDogSpan>() {
+        if let Some(dd_span) = extensions.remove::<DatadogSpan>() {
             self.buffer.lock().unwrap().push(dd_span);
         }
     }
@@ -247,8 +247,8 @@ where
     }
 }
 
-/// A builder for [`DataDogTraceLayer`].
-pub struct DataDogTraceLayerBuilder<S> {
+/// A builder for [`DatadogTraceLayer`].
+pub struct DatadogTraceLayerBuilder<S> {
     service: Option<String>,
     env: Option<String>,
     version: Option<String>,
@@ -258,7 +258,7 @@ pub struct DataDogTraceLayerBuilder<S> {
     phantom_data: PhantomData<S>,
 }
 
-/// An error that can occur when building a [`DataDogTraceLayer`].
+/// An error that can occur when building a [`DatadogTraceLayer`].
 #[derive(Debug)]
 pub struct BuilderError(&'static str);
 
@@ -270,7 +270,7 @@ impl Display for BuilderError {
 
 impl std::error::Error for BuilderError {}
 
-impl<S> DataDogTraceLayerBuilder<S>
+impl<S> DatadogTraceLayerBuilder<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
@@ -312,7 +312,7 @@ where
     }
 
     /// Consumes the builder to construct the tracing layer.
-    pub fn build(self) -> Result<DataDogTraceLayer<S>, BuilderError> {
+    pub fn build(self) -> Result<DatadogTraceLayer<S>, BuilderError> {
         let Some(service) = self.service else {
             return Err(BuilderError("service is required"));
         };
@@ -381,14 +381,14 @@ where
             }
         });
 
-        Ok(DataDogTraceLayer {
+        Ok(DatadogTraceLayer {
             buffer,
             service,
             env,
             version,
             logging_enabled: self.logging_enabled,
             #[cfg(feature = "http")]
-            with_context: http::WithContext(DataDogTraceLayer::<S>::get_context),
+            with_context: http::WithContext(DatadogTraceLayer::<S>::get_context),
             shutdown: tx,
             _registry: PhantomData,
         })
@@ -403,9 +403,9 @@ fn epoch_ns() -> i64 {
         .as_nanos() as i64
 }
 
-/// The v0.4 DataDog trace API format for spans. This is what we write to MessagePack.
+/// The v0.4 Datadog trace API format for spans. This is what we write to MessagePack.
 #[derive(Default, Debug, Serialize)]
-struct DataDogSpan {
+struct DatadogSpan {
     name: String,
     service: String,
     r#type: String,
@@ -419,13 +419,13 @@ struct DataDogSpan {
     parent_id: u64,
 }
 
-/// A visitor that converts tracing span attributes to a [`DataDogSpan`].
+/// A visitor that converts tracing span attributes to a [`DatadogSpan`].
 struct SpanAttributeVisitor<'a> {
-    dd_span: &'a mut DataDogSpan,
+    dd_span: &'a mut DatadogSpan,
 }
 
 impl<'a> SpanAttributeVisitor<'a> {
-    fn new(dd_span: &'a mut DataDogSpan) -> Self {
+    fn new(dd_span: &'a mut DatadogSpan) -> Self {
         Self { dd_span }
     }
 }
@@ -461,9 +461,9 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
     }
 }
 
-/// The DataDog structure log format. This is what we write to JSON.
+/// The Datadog structure log format. This is what we write to JSON.
 #[derive(Serialize)]
-struct DataDogLog {
+struct DatadogLog {
     timestamp: Timestamp,
     #[serde(serialize_with = "serialize_level")]
     level: Level,
@@ -495,32 +495,32 @@ impl Visit for FieldVisitor {
 #[cfg(feature = "http")]
 #[doc = "Functionality for working with distributed tracing HTTP headers"]
 pub mod http {
-    use crate::DataDogSpan;
+    use crate::DatadogSpan;
     use http::{HeaderMap, HeaderName};
     use tracing_core::{Dispatch, span::Id};
 
     /// The trace context for distributed tracing. This is a subset of the W3C trace context
     /// which allows stitching together traces with spans from different services.
     #[derive(Copy, Clone, Default)]
-    pub struct DataDogContext {
+    pub struct DatadogContext {
         trace_id: u128,
         parent_id: u64,
     }
 
-    impl DataDogContext {
+    impl DatadogContext {
         /// Parses a context for distributed tracing from W3C trace context headers.
         ///
         /// This would be useful in HTTP server middleware.
         ///
         /// ```
         /// # let request = http::Request::builder().body(()).unwrap();
-        /// use tracing_datadog::http::{DataDogContext, DistributedTracingContext};
+        /// use tracing_datadog::http::{DatadogContext, DistributedTracingContext};
         ///
         /// // Construct a new span.
         /// let span = tracing::info_span!("http.request");
         ///
         /// // Set the context on the span based on request headers.
-        /// span.set_context(DataDogContext::from_w3c_headers(request.headers()));
+        /// span.set_context(DatadogContext::from_w3c_headers(request.headers()));
         /// ```
         ///
         /// An alternative use case is setting the context on the current span, for example
@@ -528,9 +528,9 @@ pub mod http {
         ///
         /// ```
         /// # let request = http::Request::builder().body(()).unwrap();
-        /// use tracing_datadog::http::{DataDogContext, DistributedTracingContext};
+        /// use tracing_datadog::http::{DatadogContext, DistributedTracingContext};
         ///
-        /// tracing::Span::current().set_context(DataDogContext::from_w3c_headers(request.headers()));
+        /// tracing::Span::current().set_context(DatadogContext::from_w3c_headers(request.headers()));
         /// ```
         pub fn from_w3c_headers(headers: &HeaderMap) -> Self {
             Self::parse_w3c_headers(headers).unwrap_or_default()
@@ -592,7 +592,7 @@ pub mod http {
     // aware of them without knowing those types at the call site. Adapted from tracing-error.
     pub(crate) struct WithContext(
         #[allow(clippy::type_complexity)]
-        pub(crate)  fn(&Dispatch, &Id, f: &mut dyn FnMut(&mut DataDogSpan)),
+        pub(crate)  fn(&Dispatch, &Id, f: &mut dyn FnMut(&mut DatadogSpan)),
     );
 
     impl WithContext {
@@ -600,7 +600,7 @@ pub mod http {
             &self,
             dispatch: &Dispatch,
             id: &Id,
-            mut f: &mut dyn FnMut(&mut DataDogSpan),
+            mut f: &mut dyn FnMut(&mut DatadogSpan),
         ) {
             self.0(dispatch, id, &mut f);
         }
@@ -608,14 +608,14 @@ pub mod http {
 
     pub trait DistributedTracingContext {
         /// Gets the context for distributed tracing from the current span.
-        fn get_context(&self) -> DataDogContext;
+        fn get_context(&self) -> DatadogContext;
 
         /// Sets the context for distributed tracing on the current span.
-        fn set_context(&self, context: DataDogContext);
+        fn set_context(&self, context: DatadogContext);
     }
 
     impl DistributedTracingContext for tracing::Span {
-        fn get_context(&self) -> DataDogContext {
+        fn get_context(&self) -> DatadogContext {
             let mut ctx = None;
 
             self.with_subscriber(|(id, subscriber)| {
@@ -623,7 +623,7 @@ pub mod http {
                     return;
                 };
                 get_context.with_context(subscriber, id, &mut |dd_span| {
-                    ctx = Some(DataDogContext {
+                    ctx = Some(DatadogContext {
                         // NB Trace IDs can be 128-bit nowadays, but the 0.4 API still uses 64-bit.
                         trace_id: dd_span.trace_id as u128,
                         parent_id: dd_span.parent_id,
@@ -634,7 +634,7 @@ pub mod http {
             ctx.unwrap_or_default()
         }
 
-        fn set_context(&self, context: DataDogContext) {
+        fn set_context(&self, context: DatadogContext) {
             self.with_subscriber(move |(id, subscriber)| {
                 let Some(get_context) = subscriber.downcast_ref::<WithContext>() else {
                     return;
@@ -651,20 +651,20 @@ pub mod http {
     #[cfg(test)]
     mod tests {
         use super::*;
-        use crate::DataDogTraceLayer;
+        use crate::DatadogTraceLayer;
         use rand::random;
         use tracing::info_span;
         use tracing_subscriber::layer::SubscriberExt;
 
         #[test]
         fn w3c_trace_header_round_trip() {
-            let context = DataDogContext {
+            let context = DatadogContext {
                 trace_id: random(),
                 parent_id: random(),
             };
 
             let headers = context.to_w3c_headers();
-            let parsed = DataDogContext::parse_w3c_headers(&headers).unwrap();
+            let parsed = DatadogContext::parse_w3c_headers(&headers).unwrap();
 
             assert_eq!(context.trace_id, parsed.trace_id);
             assert_eq!(context.parent_id, parsed.parent_id);
@@ -674,7 +674,7 @@ pub mod http {
         fn span_context_round_trip() {
             tracing::subscriber::with_default(
                 tracing_subscriber::registry().with(
-                    DataDogTraceLayer::builder()
+                    DatadogTraceLayer::builder()
                         .service("test-service")
                         .env("test")
                         .version("test-version")
@@ -683,7 +683,7 @@ pub mod http {
                         .unwrap(),
                 ),
                 || {
-                    let context = DataDogContext {
+                    let context = DatadogContext {
                         // Need to limit the size here as we only track 64-bit trace IDs.
                         trace_id: random::<u64>() as u128,
                         parent_id: random(),

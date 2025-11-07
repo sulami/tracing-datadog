@@ -1,9 +1,9 @@
 # tracing-datadog
 
-A `tracing` exporter layer for DataDog, without dependencies on `opentelemetry`.
+A `tracing` exporter layer for Datadog, without dependencies on `opentelemetry`.
 
-- Exporter for `tracing` traces to DataDog APM
-- (Optional) DataDog-compatible log formatting and APM ↔ log correlation
+- Exporter for `tracing` traces to Datadog APM
+- (Optional) Datadog-compatible log formatting and APM ↔ log correlation
 - (Optional) Distributed tracing support for HTTP requests via W3C Trace Context headers
 - (Optional) Container-ID tracking for infrastructure metrics in APM
 
@@ -13,36 +13,36 @@ A `tracing` exporter layer for DataDog, without dependencies on `opentelemetry`.
 
 ## Usage
 
-To enable both trace data and log collection, use the `DataDogTraceLayer` layer
+To enable both trace data and log collection, use the `DatadogTraceLayer` layer
 in your `tracing` subscriber:
 
 ```rust
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use tracing_datadog::DataDogTraceLayer;
+use tracing_datadog::DatadogTraceLayer;
 
 tracing_subscriber::registry()
    .with(
-       DataDogTraceLayer::builder()
+       DatadogTraceLayer::builder()
            .service("my-service")
            .env("production")
            .version("git sha")
            .agent_address("localhost:8126")
            .enable_logs(true)
            .build()
-           .expect("failed to build DataDogTraceLayer"),
+           .expect("failed to build DatadogTraceLayer"),
    )
    .init();
 ```
 
-Logs will be emitted to stdout in the DataDog JSON format.
+Logs will be emitted to stdout in the Datadog JSON format.
 
 ### Span tag semantics
 
-Certain span tags have special meaning in DataDog:
+Certain span tags have special meaning in Datadog:
 
 - `service` - can be used to override the service on a per-span basis
-- `operation` - maps to DataDog APM operations
-- `resource` - maps to DataDog APM resources
+- `operation` - maps to Datadog APM operations
+- `resource` - maps to Datadog APM resources
 - `span.type` - defaults to `internal`, but can be set to `web` for request 
   handlers, `http` for HTTP client requests, or any of `sql`, `cassandra`, 
   `memcached`, `mongodb`, `elasticsearch`, `opensearch`, `redis`, or `db` for 
@@ -55,7 +55,7 @@ lists a lot of them.
 ### Distributed tracing over HTTP
 
 To enable distributed tracing over HTTP, enable the `http` feature and use
-`DataDogContext` to extract and inject trace context from/into HTTP headers. 
+`DatadogContext` to extract and inject trace context from/into HTTP headers. 
 See the API documentation for examples.
 
 ## Prior Art
