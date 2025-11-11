@@ -406,17 +406,17 @@ fn epoch_ns() -> i64 {
 /// The v0.4 Datadog trace API format for spans. This is what we write to MessagePack.
 #[derive(Default, Debug, Serialize)]
 struct DatadogSpan {
+    trace_id: u64,
+    span_id: u64,
+    parent_id: u64,
+    start: i64,
+    duration: i64,
     name: String,
     service: String,
     r#type: String,
     resource: String,
-    start: i64,
-    duration: i64,
     meta: HashMap<String, String>,
     error_code: i32,
-    span_id: u64,
-    trace_id: u64,
-    parent_id: u64,
 }
 
 /// A visitor that converts tracing span attributes to a [`DatadogSpan`].
