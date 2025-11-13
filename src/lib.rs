@@ -42,8 +42,7 @@ use tracing_subscriber::{
 pub struct DatadogTraceLayer<S> {
     buffer: Arc<Mutex<Vec<DatadogSpan>>>,
     service: String,
-    env: String,
-    version: String,
+    default_tags: HashMap<String, String>,
     logging_enabled: bool,
     #[cfg(feature = "http")]
     with_context: http::WithContext,
@@ -59,8 +58,7 @@ where
     pub fn builder() -> DatadogTraceLayerBuilder<S> {
         DatadogTraceLayerBuilder {
             service: None,
-            env: None,
-            version: None,
+            default_tags: HashMap::new(),
             agent_address: None,
             container_id: None,
             logging_enabled: false,
@@ -121,10 +119,7 @@ where
                 .map(|parent| parent.id().into_u64())
                 .unwrap_or_default(),
             trace_id,
-            meta: HashMap::from_iter([
-                ("env".into(), self.env.clone()),
-                ("version".into(), self.version.clone()),
-            ]),
+            meta: self.default_tags.clone(),
             ..Default::default()
         };
 
@@ -250,8 +245,7 @@ where
 /// A builder for [`DatadogTraceLayer`].
 pub struct DatadogTraceLayerBuilder<S> {
     service: Option<String>,
-    env: Option<String>,
-    version: Option<String>,
+    default_tags: HashMap<String, String>,
     agent_address: Option<String>,
     container_id: Option<String>,
     logging_enabled: bool,
@@ -282,19 +276,29 @@ where
 
     /// Sets the `env`. This is required.
     pub fn env(mut self, env: impl Into<String>) -> Self {
-        self.env = Some(env.into());
+        self.default_tags.insert("env".into(), env.into());
         self
     }
 
     /// Sets the `version`. This is required.
     pub fn version(mut self, version: impl Into<String>) -> Self {
-        self.version = Some(version.into());
+        self.default_tags.insert("version".into(), version.into());
         self
     }
 
     /// Sets the `agent_address`. This is required.
     pub fn agent_address(mut self, agent_address: impl Into<String>) -> Self {
         self.agent_address = Some(agent_address.into());
+        self
+    }
+
+    /// Adds a fixed default tag to all spans.
+    ///
+    /// This can be used multiple times for several tags.
+    ///
+    /// Default tags are overridden by tags set explicitly on a span.
+    pub fn default_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        let _ = self.default_tags.insert(key.into(), value.into());
         self
     }
 
@@ -316,10 +320,10 @@ where
         let Some(service) = self.service else {
             return Err(BuilderError("service is required"));
         };
-        let Some(env) = self.env else {
+        if !self.default_tags.contains_key("env") {
             return Err(BuilderError("env is required"));
         };
-        let Some(version) = self.version else {
+        if !self.default_tags.contains_key("version") {
             return Err(BuilderError("version is required"));
         };
         let Some(agent_address) = self.agent_address else {
@@ -384,8 +388,7 @@ where
         Ok(DatadogTraceLayer {
             buffer,
             service,
-            env,
-            version,
+            default_tags: self.default_tags,
             logging_enabled: self.logging_enabled,
             #[cfg(feature = "http")]
             with_context: http::WithContext(DatadogTraceLayer::<S>::get_context),
@@ -699,5 +702,40 @@ pub mod http {
                 },
             );
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_default_tags_include_env_and_version() {
+        let layer: DatadogTraceLayer<tracing_subscriber::Registry> = DatadogTraceLayer::builder()
+            .service("test-service")
+            .env("test")
+            .version("test-version")
+            .agent_address("localhost:8126")
+            .build()
+            .unwrap();
+        let default_tags = &layer.default_tags;
+        assert_eq!(default_tags["env"], "test");
+        assert_eq!(default_tags["version"], "test-version");
+    }
+
+    #[test]
+    fn default_tags_can_be_added() {
+        let layer: DatadogTraceLayer<tracing_subscriber::Registry> = DatadogTraceLayer::builder()
+            .service("test-service")
+            .env("test")
+            .version("test-version")
+            .agent_address("localhost:8126")
+            .default_tag("foo", "bar")
+            .default_tag("baz", "qux")
+            .build()
+            .unwrap();
+        let default_tags = &layer.default_tags;
+        assert_eq!(default_tags["foo"], "bar");
+        assert_eq!(default_tags["baz"], "qux");
     }
 }
