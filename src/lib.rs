@@ -101,13 +101,16 @@ where
 
         let trace_id = span
             .parent()
-            .and_then(|parent| {
+            .map(|parent| {
                 parent
                     .extensions()
                     .get::<DatadogSpan>()
-                    .map(|dd_span| dd_span.trace_id)
+                    .expect("Parent span didn't have a DatadogSpan extension, this is a bug")
+                    .trace_id
             })
-            .unwrap_or(rand::random());
+            .unwrap_or(rand::random_range(1..=u64::MAX));
+
+        debug_assert!(trace_id != 0, "Trace ID is zero, this is a bug");
 
         let mut dd_span = DatadogSpan {
             name: span.name().to_string(),
@@ -166,7 +169,7 @@ where
                 .flat_map(Scope::from_root)
                 .flat_map(|span| match span.extensions().get::<DatadogSpan>() {
                     Some(dd_span) => dd_span.meta.clone(),
-                    None => panic!("Span not found, this is a bug"),
+                    None => panic!("DatadogSpan extension not found, this is a bug"),
                 }),
         );
 
@@ -415,6 +418,7 @@ struct DatadogSpan {
     parent_id: u64,
     start: i64,
     duration: i64,
+    /// This is what maps to the operation in Datadog.
     name: String,
     service: String,
     r#type: String,
@@ -577,6 +581,10 @@ pub mod http {
         /// // ..
         /// ```
         pub fn to_w3c_headers(&self) -> HeaderMap {
+            if self.is_empty() {
+                return Default::default();
+            }
+
             let header = format!(
                 "{version:02x}-{trace_id:032x}-{parent_id:016x}-{trace_flags:02x}",
                 version = 0,
@@ -589,6 +597,12 @@ pub mod http {
                 HeaderName::from_static("traceparent"),
                 header.parse().unwrap(),
             )])
+        }
+
+        /// Returns `true` if the context is empty, i.e. if it does not contain a trace ID or
+        /// a parent ID.
+        fn is_empty(&self) -> bool {
+            self.trace_id == 0 || self.parent_id == 0
         }
     }
 
@@ -640,6 +654,11 @@ pub mod http {
         }
 
         fn set_context(&self, context: DatadogContext) {
+            // Avoid setting a null context.
+            if context.is_empty() {
+                return;
+            }
+
             self.with_subscriber(move |(id, subscriber)| {
                 let Some(get_context) = subscriber.downcast_ref::<WithContext>() else {
                     return;
@@ -657,15 +676,15 @@ pub mod http {
     mod tests {
         use super::*;
         use crate::DatadogTraceLayer;
-        use rand::random;
+        use rand::random_range;
         use tracing::info_span;
         use tracing_subscriber::layer::SubscriberExt;
 
         #[test]
         fn w3c_trace_header_round_trip() {
             let context = DatadogContext {
-                trace_id: random(),
-                parent_id: random(),
+                trace_id: random_range(1..=u128::MAX),
+                parent_id: random_range(1..=u64::MAX),
             };
 
             let headers = context.to_w3c_headers();
@@ -673,6 +692,11 @@ pub mod http {
 
             assert_eq!(context.trace_id, parsed.trace_id);
             assert_eq!(context.parent_id, parsed.parent_id);
+        }
+
+        #[test]
+        fn empty_context_doesnt_produce_w3c_trace_header() {
+            assert!(DatadogContext::default().to_w3c_headers().is_empty());
         }
 
         #[test]
@@ -690,8 +714,8 @@ pub mod http {
                 || {
                     let context = DatadogContext {
                         // Need to limit the size here as we only track 64-bit trace IDs.
-                        trace_id: random::<u64>() as u128,
-                        parent_id: random(),
+                        trace_id: random_range(1..=u64::MAX) as u128,
+                        parent_id: random_range(1..=u64::MAX),
                     };
 
                     let span = info_span!("test");
@@ -701,6 +725,32 @@ pub mod http {
 
                     assert_eq!(context.trace_id, result.trace_id);
                     assert_eq!(context.parent_id, result.parent_id);
+                },
+            );
+        }
+
+        #[test]
+        fn empty_span_context_does_not_erase_ids() {
+            tracing::subscriber::with_default(
+                tracing_subscriber::registry().with(
+                    DatadogTraceLayer::builder()
+                        .service("test-service")
+                        .env("test")
+                        .version("test-version")
+                        .agent_address("localhost:8126")
+                        .build()
+                        .unwrap(),
+                ),
+                || {
+                    let context = DatadogContext::default();
+
+                    let span = info_span!("test");
+
+                    span.set_context(context);
+                    let result = span.get_context();
+
+                    assert_ne!(result.trace_id, 0);
+                    assert_eq!(result.parent_id, 0);
                 },
             );
         }
