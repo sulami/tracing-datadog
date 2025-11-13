@@ -39,6 +39,7 @@ use tracing_subscriber::{
 ///    )
 ///    .init();
 /// ```
+#[derive(Debug)]
 pub struct DatadogTraceLayer<S> {
     buffer: Arc<Mutex<Vec<DatadogSpan>>>,
     service: String,
@@ -593,6 +594,7 @@ pub mod http {
 
     // This function "remembers" the types of the subscriber so that we can downcast to something
     // aware of them without knowing those types at the call site. Adapted from tracing-error.
+    #[derive(Debug)]
     pub(crate) struct WithContext(
         #[allow(clippy::type_complexity)]
         pub(crate)  fn(&Dispatch, &Id, f: &mut dyn FnMut(&mut DatadogSpan)),
@@ -708,6 +710,59 @@ pub mod http {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn builder_builds_successfully() {
+        assert!(
+            DatadogTraceLayer::<tracing_subscriber::Registry>::builder()
+                .service("test-service")
+                .env("test")
+                .version("test-version")
+                .agent_address("localhost:8126")
+                .build()
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn service_is_required() {
+        let result = DatadogTraceLayer::<tracing_subscriber::Registry>::builder()
+            .env("test")
+            .version("test-version")
+            .agent_address("localhost:8126")
+            .build();
+        assert!(result.unwrap_err().to_string().contains("service"));
+    }
+
+    #[test]
+    fn env_is_required() {
+        let result = DatadogTraceLayer::<tracing_subscriber::Registry>::builder()
+            .service("test-service")
+            .version("test-version")
+            .agent_address("localhost:8126")
+            .build();
+        assert!(result.unwrap_err().to_string().contains("env"));
+    }
+
+    #[test]
+    fn version_is_required() {
+        let result = DatadogTraceLayer::<tracing_subscriber::Registry>::builder()
+            .service("test-service")
+            .env("test")
+            .agent_address("localhost:8126")
+            .build();
+        assert!(result.unwrap_err().to_string().contains("version"));
+    }
+
+    #[test]
+    fn agent_address_is_required() {
+        let result = DatadogTraceLayer::<tracing_subscriber::Registry>::builder()
+            .service("test-service")
+            .env("test")
+            .version("test-version")
+            .build();
+        assert!(result.unwrap_err().to_string().contains("agent_address"));
+    }
 
     #[test]
     fn default_default_tags_include_env_and_version() {
