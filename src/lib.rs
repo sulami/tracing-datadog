@@ -377,7 +377,7 @@ where
                     break;
                 }
 
-                sleep(Duration::from_secs(5));
+                sleep(Duration::from_secs(1));
 
                 std::mem::swap(&mut spans, exporter_buffer.lock().unwrap().deref_mut());
 
