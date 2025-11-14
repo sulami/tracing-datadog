@@ -366,6 +366,7 @@ where
 
                 reqwest::blocking::Client::builder()
                     .default_headers(default_headers)
+                    .retry(reqwest::retry::for_host(agent_address).max_retries_per_request(2))
                     .build()
                     .expect("Failed to build reqwest client")
             };
