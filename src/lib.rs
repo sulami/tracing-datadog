@@ -1,6 +1,7 @@
 #![doc = include_str!("../README.md")]
 
 use jiff::{Timestamp, Zoned};
+use reqwest::header::{self, HeaderName, HeaderValue};
 use rmp_serde::Serializer as MpSerializer;
 use serde::{Serialize, Serializer};
 use std::{
@@ -269,6 +270,11 @@ impl Display for BuilderError {
 
 impl std::error::Error for BuilderError {}
 
+const DATADOG_LANGUAGE_HEADER: HeaderName = HeaderName::from_static("datadog-meta-lang");
+const DATADOG_TRACER_VERSION_HEADER: HeaderName =
+    HeaderName::from_static("datadog-meta-tracer-version");
+const DATADOG_CONTAINER_ID_HEADER: HeaderName = HeaderName::from_static("datadog-container-id");
+
 impl<S> DatadogTraceLayerBuilder<S>
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -336,7 +342,7 @@ where
         };
         let container_id = match self.container_id {
             Some(s) => Some(
-                s.parse::<reqwest::header::HeaderValue>()
+                s.parse::<HeaderValue>()
                     .map_err(|_| BuilderError("Failed to parse container ID into header"))?,
             ),
             _ => None,
@@ -350,15 +356,12 @@ where
         spawn(move || {
             let client = {
                 let mut default_headers = reqwest::header::HeaderMap::from_iter([(
-                    reqwest::header::HeaderName::from_static("datadog-meta-lang"),
-                    reqwest::header::HeaderValue::from_static("rust"),
+                    DATADOG_LANGUAGE_HEADER,
+                    HeaderValue::from_static("rust"),
                 )]);
 
                 if let Some(container_id) = container_id {
-                    default_headers.insert(
-                        reqwest::header::HeaderName::from_static("datadog-container-id"),
-                        container_id,
-                    );
+                    default_headers.insert(DATADOG_CONTAINER_ID_HEADER, container_id);
                 };
 
                 reqwest::blocking::Client::builder()
@@ -390,8 +393,8 @@ where
 
                 let _ = client
                     .post(&url)
-                    .header("Datadog-Meta-Tracer-Version", "v1.27.0")
-                    .header("Content-Type", "application/msgpack")
+                    .header(DATADOG_TRACER_VERSION_HEADER, "v1.27.0")
+                    .header(header::CONTENT_TYPE, "application/msgpack")
                     .body(body)
                     .send()
                     .inspect_err(|error| println!("Error exporting spans: {error:?}"));
@@ -463,7 +466,7 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
         };
     }
 
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
         match field.name() {
             "service" => self.dd_span.service = format!("{value:?}"),
             "span.type" => self.dd_span.r#type = format!("{value:?}"),
@@ -508,7 +511,7 @@ impl Visit for FieldVisitor {
             .insert(field.name().to_string(), value.to_string());
     }
 
-    fn record_debug(&mut self, field: &Field, value: &dyn std::fmt::Debug) {
+    fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
         self.fields
             .insert(field.name().to_string(), format!("{value:?}"));
     }
