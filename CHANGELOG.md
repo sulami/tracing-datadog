@@ -1,3 +1,8 @@
+## [0.3.3] - 2025-11-14
+
+### 🐛 Bug Fixes
+
+- Produce log tags ordered by key
 ## [0.3.2] - 2025-11-14
 
 ### 🐛 Bug Fixes
@@ -15,6 +20,10 @@
 ### ⚡ Performance
 
 - Use double-buffering for spans
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.3.2
 ## [0.3.0] - 2025-11-13
 
 ### 🚀 Features
