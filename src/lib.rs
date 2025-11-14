@@ -1,12 +1,12 @@
 #![doc = include_str!("../README.md")]
 
 use jiff::{Timestamp, Zoned};
-use reqwest::header::{self, HeaderName, HeaderValue};
+use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use rmp_serde::Serializer as MpSerializer;
-use serde::{Serialize, Serializer};
+use serde::{Serialize, Serializer, ser::SerializeMap};
 use std::{
-    collections::{BTreeMap, HashMap},
-    fmt::{Debug, Display, Formatter, Write},
+    collections::HashMap,
+    fmt::{Debug, Display, Formatter},
     marker::PhantomData,
     ops::DerefMut,
     sync::{Arc, Mutex, mpsc},
@@ -163,8 +163,6 @@ where
             visitor.fields
         };
 
-        let mut message = fields.remove("message").unwrap_or_default();
-
         fields.extend(
             ctx.event_scope(event)
                 .into_iter()
@@ -175,10 +173,7 @@ where
                 }),
         );
 
-        fields
-            .into_iter()
-            .try_for_each(|(k, v)| write!(&mut message, " {k}={v}"))
-            .expect("Failed to write log message");
+        let message = fields.remove("message").unwrap_or_default();
 
         let (trace_id, span_id) = ctx
             .lookup_current()
@@ -195,6 +190,7 @@ where
             message,
             trace_id,
             span_id,
+            fields,
         };
 
         let serialized = serde_json::to_string(&log).expect("Failed to serialize log");
@@ -355,7 +351,7 @@ where
 
         spawn(move || {
             let client = {
-                let mut default_headers = reqwest::header::HeaderMap::from_iter([(
+                let mut default_headers = HeaderMap::from_iter([(
                     DATADOG_LANGUAGE_HEADER,
                     HeaderValue::from_static("rust"),
                 )]);
@@ -483,27 +479,41 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
 }
 
 /// The Datadog structure log format. This is what we write to JSON.
-#[derive(Serialize)]
 struct DatadogLog {
     timestamp: Timestamp,
-    #[serde(serialize_with = "serialize_level")]
     level: Level,
     message: String,
-    #[serde(rename = "dd.trace_id", skip_serializing_if = "Option::is_none")]
     trace_id: Option<u64>,
-    #[serde(rename = "dd.span_id", skip_serializing_if = "Option::is_none")]
     span_id: Option<u64>,
+    fields: HashMap<String, String>,
 }
 
-/// Serializes a `Level` to a string, e.g. `"INFO"`.
-fn serialize_level<S: Serializer>(level: &Level, serializer: S) -> Result<S::Ok, S::Error> {
-    serializer.serialize_str(level.as_str())
+impl Serialize for DatadogLog {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(None)?;
+        map.serialize_entry("timestamp", &self.timestamp)?;
+        map.serialize_entry("level", &self.level.as_str())?;
+        map.serialize_entry("message", &self.message)?;
+        if let Some(trace_id) = &self.trace_id {
+            map.serialize_entry("dd.trace_id", &trace_id)?;
+        }
+        if let Some(span_id) = &self.span_id {
+            map.serialize_entry("dd.span_id", &span_id)?;
+        }
+        for (key, value) in &self.fields {
+            map.serialize_entry(&format!("fields.{key}"), value)?;
+        }
+        map.end()
+    }
 }
 
 /// A visitor that collects tracing attributes into a map.
 #[derive(Default)]
 struct FieldVisitor {
-    fields: BTreeMap<String, String>,
+    fields: HashMap<String, String>,
 }
 
 impl Visit for FieldVisitor {
