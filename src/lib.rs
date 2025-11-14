@@ -349,14 +349,22 @@ where
 
         spawn(move || {
             let client = {
-                let mut builder = reqwest::blocking::Client::builder();
+                let mut default_headers = reqwest::header::HeaderMap::from_iter([(
+                    reqwest::header::HeaderName::from_static("datadog-meta-lang"),
+                    reqwest::header::HeaderValue::from_static("rust"),
+                )]);
+
                 if let Some(container_id) = container_id {
-                    builder = builder.default_headers(reqwest::header::HeaderMap::from_iter([(
+                    default_headers.insert(
                         reqwest::header::HeaderName::from_static("datadog-container-id"),
                         container_id,
-                    )]));
+                    );
                 };
-                builder.build().expect("Failed to build reqwest client")
+
+                reqwest::blocking::Client::builder()
+                    .default_headers(default_headers)
+                    .build()
+                    .expect("Failed to build reqwest client")
             };
             let mut spans = Vec::new();
 
