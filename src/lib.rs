@@ -535,6 +535,8 @@ pub mod http {
     use http::{HeaderMap, HeaderName};
     use tracing_core::{Dispatch, span::Id};
 
+    const W3C_TRACEPARENT_HEADER: HeaderName = HeaderName::from_static("traceparent");
+
     /// The trace context for distributed tracing. This is a subset of the W3C trace context
     /// which allows stitching together traces with spans from different services.
     #[derive(Copy, Clone, Default)]
@@ -573,7 +575,7 @@ pub mod http {
         }
 
         fn parse_w3c_headers(headers: &HeaderMap) -> Option<Self> {
-            let header = headers.get("traceparent")?.to_str().ok()?;
+            let header = headers.get(W3C_TRACEPARENT_HEADER)?.to_str().ok()?;
 
             let parts: Vec<&str> = header.split('-').collect();
             if parts.len() != 4 {
@@ -627,10 +629,7 @@ pub mod http {
                 trace_flags = 1,
             );
 
-            HeaderMap::from_iter([(
-                HeaderName::from_static("traceparent"),
-                header.parse().unwrap(),
-            )])
+            HeaderMap::from_iter([(W3C_TRACEPARENT_HEADER, header.parse().unwrap())])
         }
 
         /// Returns `true` if the context is empty, i.e. if it does not contain a trace ID or
