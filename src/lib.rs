@@ -678,7 +678,7 @@ pub mod http {
                     ctx = Some(DatadogContext {
                         // NB Trace IDs can be 128-bit nowadays, but the 0.4 API still uses 64-bit.
                         trace_id: dd_span.trace_id as u128,
-                        parent_id: dd_span.parent_id,
+                        parent_id: dd_span.span_id,
                     })
                 });
             });
@@ -781,13 +781,14 @@ pub mod http {
                     let result = span.get_context();
 
                     assert_eq!(context.trace_id, result.trace_id);
-                    assert_eq!(context.parent_id, result.parent_id);
+                    // NB Parent ID is asymmetrical, this span's ID becomes the next span's parent ID.
+                    assert_eq!(span.id().unwrap().into_u64(), result.parent_id);
                 },
             );
         }
 
         #[test]
-        fn empty_span_context_does_not_erase_ids() {
+        fn empty_span_context_does_not_erase_trace_id() {
             tracing::subscriber::with_default(
                 tracing_subscriber::registry().with(
                     DatadogTraceLayer::builder()
@@ -807,7 +808,6 @@ pub mod http {
                     let result = span.get_context();
 
                     assert_ne!(result.trace_id, 0);
-                    assert_eq!(result.parent_id, 0);
                 },
             );
         }
