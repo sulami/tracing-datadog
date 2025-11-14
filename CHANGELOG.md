@@ -1,8 +1,18 @@
+## [0.3.4] - 2025-11-14
+
+### 🐛 Bug Fixes
+
+- Don't inherit a trace context if the upstream didn't sample
+- Record string fields without quotation marks on logs
 ## [0.3.3] - 2025-11-14
 
 ### 🐛 Bug Fixes
 
 - Produce log tags ordered by key
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.3.3
 ## [0.3.2] - 2025-11-14
 
 ### 🐛 Bug Fixes
