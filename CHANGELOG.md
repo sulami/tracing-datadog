@@ -1,3 +1,12 @@
+## [0.3.1] - 2025-11-14
+
+### 🐛 Bug Fixes
+
+- Fix the container ID header by converting it to lowercase
+
+### ⚡ Performance
+
+- Use double-buffering for spans
 ## [0.3.0] - 2025-11-13
 
 ### 🚀 Features
@@ -11,6 +20,10 @@
 ### 🧪 Testing
 
 - Add some tests for the layer builder
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.3.0
 ## [0.2.0] - 2025-11-07
 
 ### 🐛 Bug Fixes
