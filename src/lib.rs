@@ -7,6 +7,7 @@ use std::{
     collections::HashMap,
     fmt::{Debug, Display, Formatter, Write},
     marker::PhantomData,
+    ops::DerefMut,
     sync::{Arc, Mutex, mpsc},
     thread::{sleep, spawn},
     time::{Duration, SystemTime, UNIX_EPOCH},
@@ -357,6 +358,7 @@ where
                 };
                 builder.build().expect("Failed to build reqwest client")
             };
+            let mut spans = Vec::new();
 
             loop {
                 if rx.try_recv().is_ok() {
@@ -365,11 +367,8 @@ where
 
                 sleep(Duration::from_secs(5));
 
-                let spans = exporter_buffer
-                    .lock()
-                    .unwrap()
-                    .drain(..)
-                    .collect::<Vec<_>>();
+                std::mem::swap(&mut spans, exporter_buffer.lock().unwrap().deref_mut());
+
                 if spans.is_empty() {
                     continue;
                 }
@@ -378,6 +377,8 @@ where
                 let _ = spans
                     .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
                     .inspect_err(|error| println!("Error serializing spans: {error:?}"));
+
+                spans.clear();
 
                 let _ = client
                     .post(&url)
