@@ -352,7 +352,7 @@ where
                 let mut builder = reqwest::blocking::Client::builder();
                 if let Some(container_id) = container_id {
                     builder = builder.default_headers(reqwest::header::HeaderMap::from_iter([(
-                        reqwest::header::HeaderName::from_static("Datadog-Container-ID"),
+                        reqwest::header::HeaderName::from_static("datadog-container-id"),
                         container_id,
                     )]));
                 };
