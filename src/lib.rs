@@ -4,7 +4,7 @@ use jiff::{Timestamp, Zoned};
 use rmp_serde::Serializer as MpSerializer;
 use serde::{Serialize, Serializer};
 use std::{
-    collections::HashMap,
+    collections::{BTreeMap, HashMap},
     fmt::{Debug, Display, Formatter, Write},
     marker::PhantomData,
     ops::DerefMut,
@@ -177,7 +177,7 @@ where
         fields
             .into_iter()
             .try_for_each(|(k, v)| write!(&mut message, " {k}={v}"))
-            .expect("Failed to write message");
+            .expect("Failed to write log message");
 
         let (trace_id, span_id) = ctx
             .lookup_current()
@@ -491,7 +491,7 @@ fn serialize_level<S: Serializer>(level: &Level, serializer: S) -> Result<S::Ok,
 /// A visitor that collects tracing attributes into a map.
 #[derive(Default)]
 struct FieldVisitor {
-    fields: HashMap<String, String>,
+    fields: BTreeMap<String, String>,
 }
 
 impl Visit for FieldVisitor {
