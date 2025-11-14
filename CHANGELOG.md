@@ -1,3 +1,12 @@
+## [0.3.6] - 2025-11-14
+
+### 🐛 Bug Fixes
+
+- *(http)* Use the correct parent span ID in distributed context
+
+### 🚜 Refactor
+
+- Use constants for W3C trace context headers
 ## [0.3.5] - 2025-11-14
 
 ### 🚀 Features
@@ -13,6 +22,10 @@
 ### 🚜 Refactor
 
 - Use constants for headers
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.3.5
 ## [0.3.4] - 2025-11-14
 
 ### 🐛 Bug Fixes
