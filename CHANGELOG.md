@@ -1,8 +1,16 @@
-## [0.3.1] - 2025-11-14
+## [0.3.2] - 2025-11-14
 
 ### 🐛 Bug Fixes
 
 - Fix the container ID header by converting it to lowercase
+
+### 💼 Other
+
+- Release a new version as 0.3.1 was not rebased
+
+### 📚 Documentation
+
+- Backfill the 0.3.1 changelog
 
 ### ⚡ Performance
 
