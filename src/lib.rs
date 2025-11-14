@@ -554,6 +554,12 @@ pub mod http {
             }
 
             let Some(0) = u8::from_str_radix(parts[0], 16).ok() else {
+                // Wrong version.
+                return None;
+            };
+
+            let Some(0x01) = u8::from_str_radix(parts[3], 16).ok().map(|n| n & 0x01) else {
+                // Not sampled.
                 return None;
             };
 
@@ -689,7 +695,7 @@ pub mod http {
             };
 
             let headers = context.to_w3c_headers();
-            let parsed = DatadogContext::parse_w3c_headers(&headers).unwrap();
+            let parsed = DatadogContext::from_w3c_headers(&headers);
 
             assert_eq!(context.trace_id, parsed.trace_id);
             assert_eq!(context.parent_id, parsed.parent_id);
@@ -698,6 +704,30 @@ pub mod http {
         #[test]
         fn empty_context_doesnt_produce_w3c_trace_header() {
             assert!(DatadogContext::default().to_w3c_headers().is_empty());
+        }
+
+        #[test]
+        fn w3c_trace_header_with_wrong_version_produces_empty_context() {
+            let headers = HeaderMap::from_iter([(
+                HeaderName::from_static("traceparent"),
+                "01-00000000000000000000000000000001-0000000000000001-01"
+                    .parse()
+                    .unwrap(),
+            )]);
+            let context = DatadogContext::from_w3c_headers(&headers);
+            assert!(context.is_empty());
+        }
+
+        #[test]
+        fn w3c_trace_header_without_sampling_flag_produces_empty_context() {
+            let headers = HeaderMap::from_iter([(
+                HeaderName::from_static("traceparent"),
+                "00-00000000000000000000000000000001-0000000000000001-00"
+                    .parse()
+                    .unwrap(),
+            )]);
+            let context = DatadogContext::from_w3c_headers(&headers);
+            assert!(context.is_empty());
         }
 
         #[test]
