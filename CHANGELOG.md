@@ -1,9 +1,28 @@
+## [0.3.5] - 2025-11-14
+
+### 🚀 Features
+
+- Set the language on submitted traces to Rust
+- Export traces more often
+
+### 🐛 Bug Fixes
+
+- Retry trace submission requests up to two times
+- Serialize log fields into the structured fields
+
+### 🚜 Refactor
+
+- Use constants for headers
 ## [0.3.4] - 2025-11-14
 
 ### 🐛 Bug Fixes
 
 - Don't inherit a trace context if the upstream didn't sample
 - Record string fields without quotation marks on logs
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.3.4
 ## [0.3.3] - 2025-11-14
 
 ### 🐛 Bug Fixes
