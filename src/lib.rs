@@ -5,6 +5,7 @@ use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use rmp_serde::Serializer as MpSerializer;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use std::{
+    borrow::Cow,
     collections::{HashMap, HashSet},
     fmt::{Debug, Display, Formatter},
     marker::PhantomData,
@@ -45,7 +46,7 @@ use tracing_subscriber::{
 pub struct DatadogTraceLayer<S> {
     buffer: Arc<Mutex<Vec<DatadogSpan>>>,
     service: String,
-    default_tags: HashMap<String, String>,
+    default_tags: HashMap<Cow<'static, str>, String>,
     logging_enabled: bool,
     #[cfg(feature = "http")]
     with_context: http::WithContext,
@@ -61,7 +62,7 @@ where
     pub fn builder() -> DatadogTraceLayerBuilder<S> {
         DatadogTraceLayerBuilder {
             service: None,
-            default_tags: HashMap::from_iter([("span.kind".to_string(), "internal".to_string())]),
+            default_tags: HashMap::from_iter([("span.kind".into(), "internal".to_string())]),
             agent_address: None,
             container_id: None,
             logging_enabled: false,
@@ -270,7 +271,7 @@ where
 /// A builder for [`DatadogTraceLayer`].
 pub struct DatadogTraceLayerBuilder<S> {
     service: Option<String>,
-    default_tags: HashMap<String, String>,
+    default_tags: HashMap<Cow<'static, str>, String>,
     agent_address: Option<String>,
     container_id: Option<String>,
     logging_enabled: bool,
@@ -328,7 +329,11 @@ where
     /// This can be used multiple times for several tags.
     ///
     /// Default tags are overridden by tags set explicitly on a span.
-    pub fn default_tag(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+    pub fn default_tag(
+        mut self,
+        key: impl Into<Cow<'static, str>>,
+        value: impl Into<String>,
+    ) -> Self {
         let _ = self.default_tags.insert(key.into(), value.into());
         self
     }
@@ -455,7 +460,7 @@ struct DatadogSpan {
     service: String,
     r#type: String,
     resource: String,
-    meta: HashMap<String, String>,
+    meta: HashMap<Cow<'static, str>, String>,
     metrics: HashMap<String, f64>,
     span_links: Vec<SpanLink>,
     error_code: i32,
@@ -496,9 +501,7 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
             "operation" => self.dd_span.name = value.to_string(),
             "resource" => self.dd_span.resource = value.to_string(),
             name => {
-                self.dd_span
-                    .meta
-                    .insert(name.to_string(), value.to_string());
+                self.dd_span.meta.insert(name.into(), value.to_string());
             }
         };
     }
@@ -510,9 +513,7 @@ impl<'a> Visit for SpanAttributeVisitor<'a> {
             "operation" => self.dd_span.name = format!("{value:?}"),
             "resource" => self.dd_span.resource = format!("{value:?}"),
             name => {
-                self.dd_span
-                    .meta
-                    .insert(name.to_string(), format!("{value:?}"));
+                self.dd_span.meta.insert(name.into(), format!("{value:?}"));
             }
         };
     }
@@ -525,7 +526,7 @@ struct DatadogLog {
     message: String,
     trace_id: Option<u64>,
     span_id: Option<u64>,
-    fields: HashMap<String, String>,
+    fields: HashMap<Cow<'static, str>, String>,
 }
 
 impl Serialize for DatadogLog {
@@ -553,18 +554,17 @@ impl Serialize for DatadogLog {
 /// A visitor that collects tracing attributes into a map.
 #[derive(Default)]
 struct FieldVisitor {
-    fields: HashMap<String, String>,
+    fields: HashMap<Cow<'static, str>, String>,
 }
 
 impl Visit for FieldVisitor {
     fn record_str(&mut self, field: &Field, value: &str) {
-        self.fields
-            .insert(field.name().to_string(), value.to_string());
+        self.fields.insert(field.name().into(), value.to_string());
     }
 
     fn record_debug(&mut self, field: &Field, value: &dyn Debug) {
         self.fields
-            .insert(field.name().to_string(), format!("{value:?}"));
+            .insert(field.name().into(), format!("{value:?}"));
     }
 }
 
@@ -932,12 +932,12 @@ mod tests {
             .env("test")
             .version("test-version")
             .agent_address("localhost:8126")
-            .default_tag("foo", "bar")
-            .default_tag("baz", "qux")
+            .default_tag("static", "bar")
+            .default_tag(String::from("dynamic"), "qux")
             .build()
             .unwrap();
         let default_tags = &layer.default_tags;
-        assert_eq!(default_tags["foo"], "bar");
-        assert_eq!(default_tags["baz"], "qux");
+        assert_eq!(default_tags["static"], "bar");
+        assert_eq!(default_tags["dynamic"], "qux");
     }
 }
