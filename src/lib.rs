@@ -61,7 +61,7 @@ where
     pub fn builder() -> DatadogTraceLayerBuilder<S> {
         DatadogTraceLayerBuilder {
             service: None,
-            default_tags: HashMap::new(),
+            default_tags: HashMap::from_iter([("span.kind".to_string(), "internal".to_string())]),
             agent_address: None,
             container_id: None,
             logging_enabled: false,
@@ -117,7 +117,7 @@ where
         let mut dd_span = DatadogSpan {
             name: span.name().to_string(),
             service: self.service.clone(),
-            r#type: "internal".into(),
+            r#type: "custom".into(),
             span_id: span.id().into_u64(),
             start: epoch_ns(),
             parent_id: span

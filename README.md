@@ -43,7 +43,9 @@ Certain span tags have special meaning in Datadog:
 - `service` - can be used to override the service on a per-span basis
 - `operation` - maps to Datadog APM operations
 - `resource` - maps to Datadog APM resources
-- `span.type` - defaults to `internal`, but can be set to `web` for request 
+- `span.kind` - defaults to `internal`, but can be set to `client`, `server`, 
+  `producer`, or `consumer`. Internal spans do not generate trace metrics.
+- `span.type` - defaults to `custom`, but can be set to `web` for request 
   handlers, `http` for HTTP client requests, or any of `sql`, `cassandra`, 
   `memcached`, `mongodb`, `elasticsearch`, `opensearch`, `redis`, or `db` for 
   data store queries. `custom` can be used for any other type of span.
