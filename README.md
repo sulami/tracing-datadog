@@ -9,7 +9,7 @@ A `tracing` exporter layer for Datadog, without dependencies on `opentelemetry`.
 
 ## Features
 
-- `http` - W3C Trace Context header support
+- `http` - HTTP Trace Context header support (W3C Trace Context and Datadog)
 
 ## Usage
 
