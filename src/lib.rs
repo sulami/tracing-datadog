@@ -413,7 +413,7 @@ where
 
                 let _ = client
                     .post(&url)
-                    .header(DATADOG_TRACER_VERSION_HEADER, "v1.27.0")
+                    .header(DATADOG_TRACER_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
                     .header(header::CONTENT_TYPE, "application/msgpack")
                     .body(body)
                     .send()
