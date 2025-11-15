@@ -5,7 +5,7 @@ use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use rmp_serde::Serializer as MpSerializer;
 use serde::{Serialize, Serializer, ser::SerializeMap};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, HashSet},
     fmt::{Debug, Display, Formatter},
     marker::PhantomData,
     ops::DerefMut,
@@ -292,6 +292,7 @@ impl std::error::Error for BuilderError {}
 const DATADOG_LANGUAGE_HEADER: HeaderName = HeaderName::from_static("datadog-meta-lang");
 const DATADOG_TRACER_VERSION_HEADER: HeaderName =
     HeaderName::from_static("datadog-meta-tracer-version");
+const DATADOG_TRACE_COUNT_HEADER: HeaderName = HeaderName::from_static("x-datadog-trace-count");
 const DATADOG_CONTAINER_ID_HEADER: HeaderName = HeaderName::from_static("datadog-container-id");
 
 impl<S> DatadogTraceLayerBuilder<S>
@@ -374,10 +375,7 @@ where
 
         spawn(move || {
             let client = {
-                let mut default_headers = HeaderMap::from_iter([(
-                    DATADOG_LANGUAGE_HEADER,
-                    HeaderValue::from_static("rust"),
-                )]);
+                let mut default_headers = HeaderMap::new();
 
                 if let Some(container_id) = container_id {
                     default_headers.insert(DATADOG_CONTAINER_ID_HEADER, container_id);
@@ -409,15 +407,17 @@ where
                     .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
                     .inspect_err(|error| println!("Error serializing spans: {error:?}"));
 
-                spans.clear();
-
                 let _ = client
                     .post(&url)
                     .header(DATADOG_TRACER_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
+                    .header(DATADOG_LANGUAGE_HEADER, "rust")
+                    .header(DATADOG_TRACE_COUNT_HEADER, trace_count(&spans))
                     .header(header::CONTENT_TYPE, "application/msgpack")
                     .body(body)
                     .send()
                     .inspect_err(|error| println!("Error exporting spans: {error:?}"));
+
+                spans.clear();
             }
         });
 
@@ -465,6 +465,15 @@ struct DatadogSpan {
 struct SpanLink {
     trace_id: u64,
     span_id: u64,
+}
+
+/// Returns the number of unique trace IDs in a list of spans.
+fn trace_count(spans: &[DatadogSpan]) -> usize {
+    spans
+        .iter()
+        .map(|span| span.trace_id)
+        .collect::<HashSet<_>>()
+        .len()
 }
 
 /// A visitor that converts tracing span attributes to a [`DatadogSpan`].
