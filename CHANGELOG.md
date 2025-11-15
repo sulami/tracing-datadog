@@ -1,3 +1,22 @@
+## [0.4.0] - 2025-11-15
+
+### 🚀 Features
+
+- [**breaking**] Set the default span.kind to internal, span.type to custom
+- Set Datadog metrics on spans for sampling & trace metrics
+- Add support for span links via follows_from
+- Report the crate version as the tracer version
+- Report the number of traces sent to the agent
+- Add support for Datadog trace context headers
+
+### 🚜 Refactor
+
+- Split up the massive module into smaller ones
+
+### ⚡ Performance
+
+- Use Cow for tag names
+- Remove heap allocations for span metrics
 ## [0.3.6] - 2025-11-14
 
 ### 🐛 Bug Fixes
@@ -7,6 +26,10 @@
 ### 🚜 Refactor
 
 - Use constants for W3C trace context headers
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.3.6
 ## [0.3.5] - 2025-11-14
 
 ### 🚀 Features
