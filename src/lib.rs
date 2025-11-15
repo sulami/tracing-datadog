@@ -131,9 +131,9 @@ where
                 let mut m = HashMap::new();
                 if span.parent().is_none() {
                     // Special tag to mark the service entry span.
-                    m.insert("_dd.top_level".to_string(), 1.0);
+                    m.insert("_dd.top_level", 1.0);
                 }
-                m.insert("_sampling_priority_v1".to_string(), 1.0);
+                m.insert("_sampling_priority_v1", 1.0);
                 m
             },
             ..Default::default()
@@ -247,7 +247,7 @@ where
             if let Some("server" | "client" | "consumer" | "producer") =
                 dd_span.meta.get("span.kind").map(String::as_str)
             {
-                dd_span.metrics.insert("_dd.measured".to_string(), 1.0);
+                dd_span.metrics.insert("_dd.measured", 1.0);
             }
 
             self.buffer.lock().unwrap().push(dd_span);
@@ -461,7 +461,7 @@ struct DatadogSpan {
     r#type: String,
     resource: String,
     meta: HashMap<Cow<'static, str>, String>,
-    metrics: HashMap<String, f64>,
+    metrics: HashMap<&'static str, f64>,
     span_links: Vec<SpanLink>,
     error_code: i32,
 }
