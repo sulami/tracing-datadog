@@ -156,9 +156,15 @@ where
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
-        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
-            // TODO: Make this a span link instead.
-            dd_span.parent_id = follows.into_u64();
+        let other_span = ctx.span(follows).expect("Span not found, this is a bug");
+
+        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>()
+            && let Some(other_dd_span) = other_span.extensions().get::<DatadogSpan>()
+        {
+            dd_span.span_links.push(SpanLink {
+                trace_id: other_dd_span.trace_id,
+                span_id: other_dd_span.span_id,
+            })
         }
     }
 
@@ -451,7 +457,14 @@ struct DatadogSpan {
     resource: String,
     meta: HashMap<String, String>,
     metrics: HashMap<String, f64>,
+    span_links: Vec<SpanLink>,
     error_code: i32,
+}
+
+#[derive(Debug, Serialize)]
+struct SpanLink {
+    trace_id: u64,
+    span_id: u64,
 }
 
 /// A visitor that converts tracing span attributes to a [`DatadogSpan`].
