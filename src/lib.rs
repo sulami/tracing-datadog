@@ -126,6 +126,15 @@ where
                 .unwrap_or_default(),
             trace_id,
             meta: self.default_tags.clone(),
+            metrics: {
+                let mut m = HashMap::new();
+                if span.parent().is_none() {
+                    // Special tag to mark the service entry span.
+                    m.insert("_dd.top_level".to_string(), 1.0);
+                }
+                m.insert("_sampling_priority_v1".to_string(), 1.0);
+                m
+            },
             ..Default::default()
         };
 
@@ -148,6 +157,7 @@ where
         let mut extensions = span.extensions_mut();
 
         if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
+            // TODO: Make this a span link instead.
             dd_span.parent_id = follows.into_u64();
         }
     }
@@ -225,7 +235,14 @@ where
         let span = ctx.span(&id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
-        if let Some(dd_span) = extensions.remove::<DatadogSpan>() {
+        if let Some(mut dd_span) = extensions.remove::<DatadogSpan>() {
+            // Enable trace metrics for select span kinds.
+            if let Some("server" | "client" | "consumer" | "producer") =
+                dd_span.meta.get("span.kind").map(String::as_str)
+            {
+                dd_span.metrics.insert("_dd.measured".to_string(), 1.0);
+            }
+
             self.buffer.lock().unwrap().push(dd_span);
         }
     }
@@ -433,6 +450,7 @@ struct DatadogSpan {
     r#type: String,
     resource: String,
     meta: HashMap<String, String>,
+    metrics: HashMap<String, f64>,
     error_code: i32,
 }
 
