@@ -75,6 +75,23 @@ impl DatadogContext {
         })
     }
 
+    /// Serializes a context for distributed tracing as W3C trace context into `out` headers
+    pub fn write_w3c_headers(&self, out: &mut HeaderMap) {
+        if self.is_empty() {
+            return;
+        }
+
+        let header = format!(
+            "{version:02x}-{trace_id:032x}-{parent_id:016x}-{trace_flags:02x}",
+            version = 0,
+            trace_id = self.trace_id,
+            parent_id = self.parent_id,
+            trace_flags = 1,
+        );
+        out.insert(W3C_TRACEPARENT_HEADER, header.parse().unwrap());
+    }
+
+    #[inline]
     /// Serializes a context for distributed tracing to W3C trace context headers.
     ///
     /// ```
@@ -91,19 +108,9 @@ impl DatadogContext {
     /// // ..
     /// ```
     pub fn to_w3c_headers(&self) -> HeaderMap {
-        if self.is_empty() {
-            return Default::default();
-        }
-
-        let header = format!(
-            "{version:02x}-{trace_id:032x}-{parent_id:016x}-{trace_flags:02x}",
-            version = 0,
-            trace_id = self.trace_id,
-            parent_id = self.parent_id,
-            trace_flags = 1,
-        );
-
-        HeaderMap::from_iter([(W3C_TRACEPARENT_HEADER, header.parse().unwrap())])
+        let mut result = HeaderMap::new();
+        self.write_w3c_headers(&mut result);
+        result
     }
 
     /// Parses a context for distributed tracing from Datadog headers.
@@ -178,6 +185,36 @@ impl DatadogContext {
         })
     }
 
+    /// Serializes a context for distributed tracing as Datadog context into `out` headers.
+    pub fn write_datadog_headers(&self, out: &mut HeaderMap) {
+        if self.is_empty() {
+            return;
+        }
+
+        let lower_64_bits = self.trace_id as u64;
+        let upper_64_bits = (self.trace_id >> 64) as u64;
+
+        out.insert(
+            DATADOG_TRACE_ID_HEADER,
+            lower_64_bits.to_string().parse().unwrap(),
+        );
+        out.insert(
+            DATADOG_PARENT_ID_HEADER,
+            self.parent_id.to_string().parse().unwrap(),
+        );
+        out.insert(
+            DATADOG_SAMPLING_PRIORITY_HEADER,
+            HeaderValue::from_static("1"),
+        );
+        out.insert(
+            DATADOG_TAGS_HEADER,
+            format!("_dd.p.tid={upper_64_bits:016x}")
+                .parse()
+                .ok()
+                .unwrap(),
+        );
+    }
+
     /// Serializes a context for distributed tracing to Datadog headers.
     ///
     /// ```
@@ -194,34 +231,9 @@ impl DatadogContext {
     /// // ..
     /// ```
     pub fn to_datadog_headers(&self) -> HeaderMap {
-        if self.is_empty() {
-            return Default::default();
-        }
-
-        let lower_64_bits = self.trace_id as u64;
-        let upper_64_bits = (self.trace_id >> 64) as u64;
-
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            DATADOG_TRACE_ID_HEADER,
-            lower_64_bits.to_string().parse().unwrap(),
-        );
-        headers.insert(
-            DATADOG_PARENT_ID_HEADER,
-            self.parent_id.to_string().parse().unwrap(),
-        );
-        headers.insert(
-            DATADOG_SAMPLING_PRIORITY_HEADER,
-            HeaderValue::from_static("1"),
-        );
-        headers.insert(
-            DATADOG_TAGS_HEADER,
-            format!("_dd.p.tid={upper_64_bits:016x}")
-                .parse()
-                .ok()
-                .unwrap(),
-        );
-        headers
+        let mut result = HeaderMap::new();
+        self.write_datadog_headers(&mut result);
+        result
     }
 
     /// Returns `true` if the context is empty, i.e. if it does not contain a trace ID or
