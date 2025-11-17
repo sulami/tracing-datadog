@@ -3,7 +3,7 @@ use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use rmp_serde::Serializer as MpSerializer;
 use serde::Serialize;
 use std::{
-    collections::HashSet,
+    collections::HashMap,
     ops::DerefMut,
     sync::{Arc, Mutex, mpsc},
     thread::sleep,
@@ -52,16 +52,22 @@ pub(crate) fn exporter(
                 continue;
             }
 
-            let mut body = vec![0b10010001];
-            let _ = spans
-                .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
-                .inspect_err(|error| println!("Error serializing spans: {error:?}"));
+            let mut trace_count = 0;
+            let mut body = vec![];
+
+            group_traces(&spans).for_each(|trace| {
+                trace_count += 1;
+                body.push(0b10010001);
+                let _ = trace
+                    .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
+                    .inspect_err(|error| println!("Error serializing spans: {error:?}"));
+            });
 
             let _ = client
                 .post(&url)
                 .header(DATADOG_TRACER_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
                 .header(DATADOG_LANGUAGE_HEADER, "rust")
-                .header(DATADOG_TRACE_COUNT_HEADER, trace_count(&spans))
+                .header(DATADOG_TRACE_COUNT_HEADER, trace_count)
                 .header(header::CONTENT_TYPE, "application/msgpack")
                 .body(body)
                 .send()
@@ -72,11 +78,14 @@ pub(crate) fn exporter(
     }
 }
 
-/// Returns the number of unique trace IDs in a list of spans.
-fn trace_count(spans: &[DatadogSpan]) -> usize {
-    spans
-        .iter()
-        .map(|span| span.trace_id)
-        .collect::<HashSet<_>>()
-        .len()
+/// Groups spans into trace chunks.
+fn group_traces(spans: &[DatadogSpan]) -> impl Iterator<Item = Vec<&DatadogSpan>> {
+    let mut traces = HashMap::new();
+    spans.iter().for_each(|span| {
+        traces
+            .entry(span.trace_id)
+            .or_insert_with(Vec::new)
+            .push(span);
+    });
+    traces.into_values()
 }
