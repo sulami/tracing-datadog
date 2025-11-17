@@ -155,7 +155,10 @@ where
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
-        let other_span = ctx.span(follows).expect("Span not found, this is a bug");
+        let Some(other_span) = ctx.span(follows) else {
+            // The other span might be filtered or closed, so we can't access it.
+            return;
+        };
 
         if let Some(dd_span) = extensions.get_mut::<DatadogSpan>()
             && let Some(other_dd_span) = other_span.extensions().get::<DatadogSpan>()
