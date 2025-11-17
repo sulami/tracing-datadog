@@ -1,3 +1,9 @@
+## [0.4.1] - 2025-11-17
+
+### 🐛 Bug Fixes
+
+- Don't panic if we can't access a linked span
+- Export spans as trace chunks
 ## [0.4.0] - 2025-11-15
 
 ### 🚀 Features
@@ -17,6 +23,10 @@
 
 - Use Cow for tag names
 - Remove heap allocations for span metrics
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.4.0
 ## [0.3.6] - 2025-11-14
 
 ### 🐛 Bug Fixes
