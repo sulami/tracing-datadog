@@ -130,6 +130,10 @@ where
                 if span.parent().is_none() {
                     // Special tag to mark the service entry span.
                     m.insert("_dd.top_level", 1.0);
+                    m.insert("_dd.agent_psr", 1.0);
+                    m.insert("_dd.rule_psr", 1.0);
+                    m.insert("_dd.limit_psr", 1.0);
+                    m.insert("_sample_rate", 1.0);
                 }
                 m.insert("_sampling_priority_v1", 1.0);
                 m
@@ -249,6 +253,7 @@ where
                 dd_span.meta.get("span.kind").map(String::as_str)
             {
                 dd_span.metrics.insert("_dd.measured", 1.0);
+                dd_span.metrics.insert("_dd1.sr.eausr", 1.0);
             }
 
             self.buffer.lock().unwrap().push(dd_span);
