@@ -1,15 +1,102 @@
 //! Functionality for working with distributed tracing HTTP headers
 
+use core::fmt;
+use core::str::FromStr;
+
 use crate::span::DatadogSpan;
 use http::{HeaderMap, HeaderName, HeaderValue};
 use tracing_core::{Dispatch, span::Id};
 
-const W3C_TRACEPARENT_HEADER: HeaderName = HeaderName::from_static("traceparent");
+///W3C header name to be used to propagate context
+pub const W3C_TRACEPARENT: &str = "traceparent";
+///W3C header name to be used to propagate context
+pub const W3C_TRACEPARENT_HEADER: HeaderName = HeaderName::from_static(W3C_TRACEPARENT);
 const DATADOG_TRACE_ID_HEADER: HeaderName = HeaderName::from_static("x-datadog-trace-id");
 const DATADOG_PARENT_ID_HEADER: HeaderName = HeaderName::from_static("x-datadog-parent-id");
 const DATADOG_SAMPLING_PRIORITY_HEADER: HeaderName =
     HeaderName::from_static("x-datadog-sampling-priority");
 const DATADOG_TAGS_HEADER: HeaderName = HeaderName::from_static("x-datadog-tags");
+
+/// Defines context extraction
+pub trait Extractor {
+    ///Extracts [TRACEPARENT](constant.W3C_TRACEPARENT.html) from `self`
+    ///
+    ///Returning header's value if it is present and it is valid UTF-8 string
+    fn get_w3c_header(&self) -> Option<&str>;
+
+    /// Extracts a context for distributed tracing from W3C trace context headers.
+    ///
+    /// Returns `None` if header is missing or context is not valid header
+    fn extract_w3c_headers(&self) -> Option<DatadogContext> {
+        let header = self.get_w3c_header()?;
+
+        let parts: Vec<&str> = header.split('-').collect();
+        if parts.len() != 4 {
+            return None;
+        }
+
+        let Some(0) = u8::from_str_radix(parts[0], 16).ok() else {
+            // Wrong version.
+            return None;
+        };
+
+        let Some(0x01) = u8::from_str_radix(parts[3], 16).ok().map(|n| n & 0x01) else {
+            // Not sampled.
+            return None;
+        };
+
+        let trace_id = u128::from_str_radix(parts[1], 16).ok()?;
+        let parent_id = u64::from_str_radix(parts[2], 16).ok()?;
+
+        Some(DatadogContext {
+            trace_id,
+            parent_id,
+        })
+    }
+}
+
+/// Defines context injection
+pub trait Injector {
+    type Value: FromStr;
+    ///Sets [TRACEPARENT](constant.W3C_TRACEPARENT.html) `value` into `self`
+    fn set_w3c_header(&mut self, value: &str) -> Result<(), <Self::Value as FromStr>::Err>;
+    ///Injects w3c headers from the `ctx` into `self` if context is present
+    fn inject_w3c_headers(
+        &mut self,
+        ctx: &DatadogContext,
+    ) -> Result<(), <Self::Value as FromStr>::Err> {
+        if ctx.is_empty() {
+            return Ok(());
+        }
+
+        let header = format!(
+            "{version:02x}-{trace_id:032x}-{parent_id:016x}-{trace_flags:02x}",
+            version = 0,
+            trace_id = ctx.trace_id,
+            parent_id = ctx.parent_id,
+            trace_flags = 1,
+        );
+
+        self.set_w3c_header(&header)
+    }
+}
+
+impl Extractor for HeaderMap {
+    fn get_w3c_header(&self) -> Option<&str> {
+        self.get(W3C_TRACEPARENT_HEADER)
+            .and_then(|header| header.to_str().ok())
+    }
+}
+
+impl Injector for HeaderMap {
+    type Value = HeaderValue;
+    #[inline]
+    fn set_w3c_header(&mut self, value: &str) -> Result<(), <Self::Value as FromStr>::Err> {
+        let value = value.parse()?;
+        self.insert(W3C_TRACEPARENT_HEADER, value);
+        Ok(())
+    }
+}
 
 /// The trace context for distributed tracing. This is a subset of the W3C trace context
 /// which allows stitching together traces with spans from different services.
@@ -45,50 +132,23 @@ impl DatadogContext {
     /// tracing::Span::current().set_context(DatadogContext::from_w3c_headers(request.headers()));
     /// ```
     pub fn from_w3c_headers(headers: &HeaderMap) -> Self {
-        Self::parse_w3c_headers(headers).unwrap_or_default()
+        headers.extract_w3c_headers().unwrap_or_default()
     }
 
-    fn parse_w3c_headers(headers: &HeaderMap) -> Option<Self> {
-        let header = headers.get(W3C_TRACEPARENT_HEADER)?.to_str().ok()?;
-
-        let parts: Vec<&str> = header.split('-').collect();
-        if parts.len() != 4 {
-            return None;
-        }
-
-        let Some(0) = u8::from_str_radix(parts[0], 16).ok() else {
-            // Wrong version.
-            return None;
-        };
-
-        let Some(0x01) = u8::from_str_radix(parts[3], 16).ok().map(|n| n & 0x01) else {
-            // Not sampled.
-            return None;
-        };
-
-        let trace_id = u128::from_str_radix(parts[1], 16).ok()?;
-        let parent_id = u64::from_str_radix(parts[2], 16).ok()?;
-
-        Some(Self {
-            trace_id,
-            parent_id,
-        })
-    }
-
+    #[inline]
     /// Serializes a context for distributed tracing as W3C trace context into `out` headers
     pub fn write_w3c_headers(&self, out: &mut HeaderMap) {
-        if self.is_empty() {
-            return;
-        }
+        self.inject_w3c_headers(out)
+    }
 
-        let header = format!(
-            "{version:02x}-{trace_id:032x}-{parent_id:016x}-{trace_flags:02x}",
-            version = 0,
-            trace_id = self.trace_id,
-            parent_id = self.parent_id,
-            trace_flags = 1,
-        );
-        out.insert(W3C_TRACEPARENT_HEADER, header.parse().unwrap());
+    #[inline]
+    /// Serializes a context for distributed tracing as W3C trace context injecting it into `out`
+    pub fn inject_w3c_headers<I: Injector>(&self, out: &mut I)
+    where
+        <I::Value as FromStr>::Err: fmt::Debug,
+    {
+        //w3c trace is always valid header string
+        out.inject_w3c_headers(self).unwrap()
     }
 
     #[inline]
