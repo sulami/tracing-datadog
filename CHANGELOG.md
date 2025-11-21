@@ -1,9 +1,18 @@
+## [0.4.3] - 2025-11-21
+
+### 🐛 Bug Fixes
+
+- Set even more sampling-related tags to ensure sampling
 ## [0.4.2] - 2025-11-21
 
 ### 🚀 Features
 
 - Add more _dd tags for better sample rates
 - Add the PID as a tag for correlation with processes
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.4.2
 ## [0.4.1] - 2025-11-17
 
 ### 🐛 Bug Fixes
