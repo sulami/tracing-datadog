@@ -1,9 +1,19 @@
+## [0.4.2] - 2025-11-21
+
+### 🚀 Features
+
+- Add more _dd tags for better sample rates
+- Add the PID as a tag for correlation with processes
 ## [0.4.1] - 2025-11-17
 
 ### 🐛 Bug Fixes
 
 - Don't panic if we can't access a linked span
 - Export spans as trace chunks
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.4.1
 ## [0.4.0] - 2025-11-15
 
 ### 🚀 Features
