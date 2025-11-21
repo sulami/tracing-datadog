@@ -136,6 +136,7 @@ where
                     m.insert("_sample_rate", 1.0);
                 }
                 m.insert("_sampling_priority_v1", 1.0);
+                m.insert("process_id", std::process::id() as f64);
                 m
             },
             ..Default::default()
