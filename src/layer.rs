@@ -134,8 +134,9 @@ where
                     m.insert("_dd.rule_psr", 1.0);
                     m.insert("_dd.limit_psr", 1.0);
                     m.insert("_sample_rate", 1.0);
+                    m.insert("_dd.tracer_kr", 1.0);
                 }
-                m.insert("_sampling_priority_v1", 1.0);
+                m.insert("_sampling_priority_v1", 2.0);
                 m.insert("process_id", std::process::id() as f64);
                 m
             },
