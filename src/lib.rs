@@ -2,7 +2,7 @@
 
 pub mod context;
 mod export;
-#[cfg(feature = "http")]
+#[cfg(any(feature = "http", docsrs))]
 pub mod http;
 mod layer;
 mod log;
