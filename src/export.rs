@@ -60,7 +60,7 @@ pub(crate) fn exporter(
             let trace_chunks = group_traces(spans.drain(..)).collect::<Vec<_>>();
             let _ = trace_chunks
                 .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
-                .inspect_err(|error| println!("Error serializing spans: {error:?}"));
+                .inspect_err(|error| tracing::error!(?error, "Error serializing spans"));
 
             let _ = client
                 .post(&url)
@@ -70,7 +70,7 @@ pub(crate) fn exporter(
                 .header(header::CONTENT_TYPE, "application/msgpack")
                 .body(body)
                 .send()
-                .inspect_err(|error| println!("Error exporting spans: {error:?}"));
+                .inspect_err(|error| tracing::error!(?error, "Error exporting spans"));
         }
     }
 }
