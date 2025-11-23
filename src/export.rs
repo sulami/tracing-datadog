@@ -1,4 +1,4 @@
-use crate::span::DatadogSpan;
+use crate::span::Span;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use rmp_serde::Serializer as MpSerializer;
 use serde::Serialize;
@@ -18,7 +18,7 @@ const DATADOG_CONTAINER_ID_HEADER: HeaderName = HeaderName::from_static("datadog
 
 pub(crate) fn exporter(
     agent_address: String,
-    buffer: Arc<Mutex<Vec<DatadogSpan>>>,
+    buffer: Arc<Mutex<Vec<Span>>>,
     container_id: Option<HeaderValue>,
     shutdown_signal: mpsc::Receiver<()>,
 ) -> impl FnOnce() {
@@ -52,36 +52,30 @@ pub(crate) fn exporter(
                 continue;
             }
 
-            let mut trace_count = 0;
             let mut body = vec![];
 
-            group_traces(&spans).for_each(|trace| {
-                trace_count += 1;
-                body.push(0b10010001);
-                let _ = trace
-                    .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
-                    .inspect_err(|error| println!("Error serializing spans: {error:?}"));
-            });
+            let trace_chunks = group_traces(spans.drain(..)).collect::<Vec<_>>();
+            let _ = trace_chunks
+                .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
+                .inspect_err(|error| println!("Error serializing spans: {error:?}"));
 
             let _ = client
                 .post(&url)
                 .header(DATADOG_TRACER_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
                 .header(DATADOG_LANGUAGE_HEADER, "rust")
-                .header(DATADOG_TRACE_COUNT_HEADER, trace_count)
+                .header(DATADOG_TRACE_COUNT_HEADER, trace_chunks.len())
                 .header(header::CONTENT_TYPE, "application/msgpack")
                 .body(body)
                 .send()
                 .inspect_err(|error| println!("Error exporting spans: {error:?}"));
-
-            spans.clear();
         }
     }
 }
 
 /// Groups spans into trace chunks.
-fn group_traces(spans: &[DatadogSpan]) -> impl Iterator<Item = Vec<&DatadogSpan>> {
+fn group_traces(spans: impl Iterator<Item = Span>) -> impl Iterator<Item = Vec<Span>> {
     let mut traces = HashMap::new();
-    spans.iter().for_each(|span| {
+    spans.for_each(|span| {
         traces
             .entry(span.trace_id)
             .or_insert_with(Vec::new)

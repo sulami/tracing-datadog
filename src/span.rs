@@ -2,9 +2,9 @@ use serde::Serialize;
 use std::{borrow::Cow, collections::HashMap, fmt::Debug};
 use tracing_core::{Field, field::Visit};
 
-/// The v0.4 Datadog trace API format for spans. This is what we write to MessagePack.
+/// The v0.4 Datadog trace API format for spans.
 #[derive(Default, Debug, Serialize)]
-pub(crate) struct DatadogSpan {
+pub(crate) struct Span {
     pub trace_id: u64,
     pub span_id: u64,
     pub parent_id: u64,
@@ -29,13 +29,13 @@ pub(crate) struct SpanLink {
     pub span_id: u64,
 }
 
-/// A visitor that converts tracing span attributes to a [`DatadogSpan`].
+/// A visitor that converts tracing span attributes to a [`Span`].
 pub(crate) struct SpanAttributeVisitor<'a> {
-    dd_span: &'a mut DatadogSpan,
+    dd_span: &'a mut Span,
 }
 
 impl<'a> SpanAttributeVisitor<'a> {
-    pub fn new(dd_span: &'a mut DatadogSpan) -> Self {
+    pub fn new(dd_span: &'a mut Span) -> Self {
         Self { dd_span }
     }
 }

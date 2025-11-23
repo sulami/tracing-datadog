@@ -1,6 +1,6 @@
 use crate::{
     log::{DatadogLog, FieldVisitor},
-    span::{DatadogSpan, SpanAttributeVisitor, SpanLink},
+    span::{Span, SpanAttributeVisitor, SpanLink},
 };
 use jiff::Zoned;
 use reqwest::header::HeaderValue;
@@ -42,7 +42,7 @@ use tracing_subscriber::{
 /// ```
 #[derive(Debug)]
 pub struct DatadogTraceLayer<S> {
-    buffer: Arc<Mutex<Vec<DatadogSpan>>>,
+    buffer: Arc<Mutex<Vec<Span>>>,
     service: String,
     default_tags: HashMap<Cow<'static, str>, String>,
     logging_enabled: bool,
@@ -67,18 +67,14 @@ where
         }
     }
 
-    fn get_context(
-        dispatch: &tracing_core::Dispatch,
-        id: &Id,
-        f: &mut dyn FnMut(&mut DatadogSpan),
-    ) {
+    fn get_context(dispatch: &tracing_core::Dispatch, id: &Id, f: &mut dyn FnMut(&mut Span)) {
         let subscriber = dispatch
             .downcast_ref::<S>()
             .expect("Subscriber did not downcast to expected type, this is a bug");
         let span = subscriber.span(id).expect("Span not found, this is a bug");
 
         let mut extensions = span.extensions_mut();
-        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
+        if let Some(dd_span) = extensions.get_mut::<Span>() {
             f(dd_span);
         }
     }
@@ -103,7 +99,7 @@ where
             .map(|parent| {
                 parent
                     .extensions()
-                    .get::<DatadogSpan>()
+                    .get::<Span>()
                     .expect("Parent span didn't have a DatadogSpan extension, this is a bug")
                     .trace_id
             })
@@ -111,7 +107,7 @@ where
 
         debug_assert!(trace_id != 0, "Trace ID is zero, this is a bug");
 
-        let mut dd_span = DatadogSpan {
+        let mut dd_span = Span {
             name: span.name().to_string(),
             service: self.service.clone(),
             r#type: "custom".into(),
@@ -150,7 +146,7 @@ where
         let span = ctx.span(id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
-        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
+        if let Some(dd_span) = extensions.get_mut::<Span>() {
             values.record(&mut SpanAttributeVisitor::new(dd_span));
         }
     }
@@ -164,8 +160,8 @@ where
             return;
         };
 
-        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>()
-            && let Some(other_dd_span) = other_span.extensions().get::<DatadogSpan>()
+        if let Some(dd_span) = extensions.get_mut::<Span>()
+            && let Some(other_dd_span) = other_span.extensions().get::<Span>()
         {
             dd_span.span_links.push(SpanLink {
                 trace_id: other_dd_span.trace_id,
@@ -189,7 +185,7 @@ where
             ctx.event_scope(event)
                 .into_iter()
                 .flat_map(Scope::from_root)
-                .flat_map(|span| match span.extensions().get::<DatadogSpan>() {
+                .flat_map(|span| match span.extensions().get::<Span>() {
                     Some(dd_span) => dd_span.meta.clone(),
                     None => panic!("DatadogSpan extension not found, this is a bug"),
                 }),
@@ -201,7 +197,7 @@ where
             .lookup_current()
             .and_then(|span| {
                 span.extensions()
-                    .get::<DatadogSpan>()
+                    .get::<Span>()
                     .map(|dd_span| (Some(dd_span.trace_id), Some(dd_span.span_id)))
             })
             .unwrap_or_default();
@@ -226,7 +222,7 @@ where
 
         let now = epoch_ns();
 
-        match extensions.get_mut::<DatadogSpan>() {
+        match extensions.get_mut::<Span>() {
             Some(dd_span) if dd_span.start == 0 => dd_span.start = now,
             _ => {}
         }
@@ -238,7 +234,7 @@ where
 
         let now = epoch_ns();
 
-        if let Some(dd_span) = extensions.get_mut::<DatadogSpan>() {
+        if let Some(dd_span) = extensions.get_mut::<Span>() {
             dd_span.duration = now - dd_span.start
         }
     }
@@ -247,7 +243,7 @@ where
         let span = ctx.span(&id).expect("Span not found, this is a bug");
         let mut extensions = span.extensions_mut();
 
-        if let Some(mut dd_span) = extensions.remove::<DatadogSpan>() {
+        if let Some(mut dd_span) = extensions.remove::<Span>() {
             // Enable trace metrics for select span kinds.
             if let Some("server" | "client" | "consumer" | "producer") =
                 dd_span.meta.get("span.kind").map(String::as_str)

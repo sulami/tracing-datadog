@@ -1,6 +1,6 @@
 //! Functionality for working with distributed trace context.
 
-use crate::span::DatadogSpan;
+use crate::span::Span;
 use tracing_core::{Dispatch, span::Id};
 
 /// The trace context for distributed tracing. This is a subset of the W3C trace context
@@ -105,8 +105,7 @@ pub trait Strategy<T: ?Sized> {
 /// aware of them without knowing those types at the call site. Adapted from tracing-error.
 #[derive(Debug)]
 pub(crate) struct WithContext(
-    #[allow(clippy::type_complexity)]
-    pub(crate)  fn(&Dispatch, &Id, f: &mut dyn FnMut(&mut DatadogSpan)),
+    #[allow(clippy::type_complexity)] pub(crate) fn(&Dispatch, &Id, f: &mut dyn FnMut(&mut Span)),
 );
 
 impl WithContext {
@@ -114,7 +113,7 @@ impl WithContext {
         &self,
         dispatch: &Dispatch,
         id: &Id,
-        mut f: &mut dyn FnMut(&mut DatadogSpan),
+        mut f: &mut dyn FnMut(&mut Span),
     ) {
         self.0(dispatch, id, &mut f);
     }
