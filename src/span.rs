@@ -15,7 +15,9 @@ pub(crate) struct DatadogSpan {
     pub service: String,
     pub r#type: String,
     pub resource: String,
+    #[serde(borrow)]
     pub meta: HashMap<Cow<'static, str>, String>,
+    #[serde(borrow)]
     pub metrics: HashMap<&'static str, f64>,
     pub span_links: Vec<SpanLink>,
     pub error_code: i32,
