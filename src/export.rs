@@ -40,7 +40,10 @@ pub(crate) fn exporter(
         let mut spans = Vec::new();
 
         loop {
-            if shutdown_signal.try_recv().is_ok() {
+            if matches!(
+                shutdown_signal.try_recv(),
+                Ok(()) | Err(mpsc::TryRecvError::Disconnected)
+            ) {
                 break;
             }
 
