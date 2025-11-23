@@ -1,5 +1,6 @@
 #![doc = include_str!("../README.md")]
 
+pub mod context;
 mod export;
 #[cfg(feature = "http")]
 pub mod http;

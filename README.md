@@ -4,7 +4,8 @@ A `tracing` exporter layer for Datadog, without dependencies on `opentelemetry`.
 
 - Exporter for `tracing` traces to Datadog APM
 - (Optional) Datadog-compatible log formatting and APM ↔ log correlation
-- (Optional) Distributed tracing support for HTTP requests via W3C Trace Context headers
+- (Optional) Distributed tracing support for HTTP requests via W3C Trace 
+  Context headers or Datadog's proprietary headers
 - (Optional) Container-ID tracking for infrastructure metrics in APM
 
 ## Features

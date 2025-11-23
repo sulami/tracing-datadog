@@ -46,8 +46,7 @@ pub struct DatadogTraceLayer<S> {
     service: String,
     default_tags: HashMap<Cow<'static, str>, String>,
     logging_enabled: bool,
-    #[cfg(feature = "http")]
-    with_context: crate::http::WithContext,
+    with_context: crate::context::WithContext,
     shutdown: mpsc::Sender<()>,
     _registry: PhantomData<S>,
 }
@@ -68,7 +67,6 @@ where
         }
     }
 
-    #[cfg(feature = "http")]
     fn get_context(
         dispatch: &tracing_core::Dispatch,
         id: &Id,
@@ -264,11 +262,10 @@ where
 
     // SAFETY: This is safe because the `WithContext` function pointer is valid
     // for the lifetime of `&self`.
-    #[cfg(feature = "http")]
     unsafe fn downcast_raw(&self, id: std::any::TypeId) -> Option<*const ()> {
         match id {
             id if id == std::any::TypeId::of::<Self>() => Some(self as *const _ as *const ()),
-            id if id == std::any::TypeId::of::<crate::http::WithContext>() => {
+            id if id == std::any::TypeId::of::<crate::context::WithContext>() => {
                 Some(&self.with_context as *const _ as *const ())
             }
             _ => None,
@@ -390,8 +387,7 @@ where
             service,
             default_tags: self.default_tags,
             logging_enabled: self.logging_enabled,
-            #[cfg(feature = "http")]
-            with_context: crate::http::WithContext(DatadogTraceLayer::<S>::get_context),
+            with_context: crate::context::WithContext(DatadogTraceLayer::<S>::get_context),
             shutdown,
             _registry: PhantomData,
         })
