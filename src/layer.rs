@@ -1,5 +1,5 @@
 use crate::{
-    log::{DatadogLog, FieldVisitor},
+    log::{FieldVisitor, Log},
     span::{Span, SpanAttributeVisitor, SpanLink},
 };
 #[cfg(feature = "ahash")]
@@ -190,27 +190,23 @@ where
                 .flat_map(Scope::from_root)
                 .flat_map(|span| match span.extensions().get::<Span>() {
                     Some(dd_span) => dd_span.meta.clone(),
-                    None => panic!("DatadogSpan extension not found, this is a bug"),
+                    None => panic!("Datadog Span extension not found, this is a bug"),
                 }),
         );
 
         let message = fields.remove("message").unwrap_or_default();
 
-        let (trace_id, span_id) = ctx
-            .lookup_current()
-            .and_then(|span| {
-                span.extensions()
-                    .get::<Span>()
-                    .map(|dd_span| (Some(dd_span.trace_id), Some(dd_span.span_id)))
-            })
-            .unwrap_or_default();
+        let trace_context = ctx.lookup_current().and_then(|span| {
+            span.extensions()
+                .get::<Span>()
+                .map(|dd_span| (dd_span.trace_id, dd_span.span_id))
+        });
 
-        let log = DatadogLog {
+        let log = Log {
             timestamp: Zoned::now().timestamp(),
             level: event.metadata().level().to_owned(),
             message,
-            trace_id,
-            span_id,
+            trace_context,
             fields,
         };
 

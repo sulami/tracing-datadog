@@ -8,16 +8,15 @@ use std::{borrow::Cow, fmt::Debug};
 use tracing_core::{Field, Level, field::Visit};
 
 /// The Datadog structure log format. This is what we write to JSON.
-pub(crate) struct DatadogLog {
+pub(crate) struct Log {
     pub timestamp: Timestamp,
     pub level: Level,
     pub message: String,
-    pub trace_id: Option<u64>,
-    pub span_id: Option<u64>,
+    pub trace_context: Option<(u64, u64)>,
     pub fields: HashMap<Cow<'static, str>, String>,
 }
 
-impl Serialize for DatadogLog {
+impl Serialize for Log {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -26,10 +25,8 @@ impl Serialize for DatadogLog {
         map.serialize_entry("timestamp", &self.timestamp)?;
         map.serialize_entry("level", &self.level.as_str())?;
         map.serialize_entry("message", &self.message)?;
-        if let Some(trace_id) = &self.trace_id {
+        if let Some((trace_id, span_id)) = &self.trace_context {
             map.serialize_entry("dd.trace_id", &trace_id)?;
-        }
-        if let Some(span_id) = &self.span_id {
             map.serialize_entry("dd.span_id", &span_id)?;
         }
         for (key, value) in &self.fields {
