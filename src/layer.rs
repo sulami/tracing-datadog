@@ -2,11 +2,14 @@ use crate::{
     log::{DatadogLog, FieldVisitor},
     span::{Span, SpanAttributeVisitor, SpanLink},
 };
+#[cfg(feature = "ahash")]
+use ahash::AHashMap as HashMap;
 use jiff::Zoned;
 use reqwest::header::HeaderValue;
+#[cfg(not(feature = "ahash"))]
+use std::collections::HashMap;
 use std::{
     borrow::Cow,
-    collections::HashMap,
     fmt::{Display, Formatter},
     marker::PhantomData,
     sync::{Arc, Mutex, mpsc},

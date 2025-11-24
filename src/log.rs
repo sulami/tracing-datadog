@@ -1,7 +1,10 @@
+#[cfg(feature = "ahash")]
+use ahash::AHashMap as HashMap;
 use jiff::Timestamp;
-use serde::ser::SerializeMap;
-use serde::{Serialize, Serializer};
-use std::{borrow::Cow, collections::HashMap, fmt::Debug};
+use serde::{Serialize, Serializer, ser::SerializeMap};
+#[cfg(not(feature = "ahash"))]
+use std::collections::HashMap;
+use std::{borrow::Cow, fmt::Debug};
 use tracing_core::{Field, Level, field::Visit};
 
 /// The Datadog structure log format. This is what we write to JSON.

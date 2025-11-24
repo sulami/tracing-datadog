@@ -8,8 +8,9 @@ A `tracing` exporter layer for Datadog, without dependencies on `opentelemetry`.
   Context headers or Datadog's proprietary headers
 - (Optional) Container-ID tracking for infrastructure metrics in APM
 
-## Features
+## Crate features
 
+- `ahash` - Use AHashMaps instead of `std` HashMaps for performance
 - `http` - HTTP Trace Context header support (W3C Trace Context and Datadog)
 
 ## Usage

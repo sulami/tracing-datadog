@@ -1,9 +1,13 @@
 use crate::span::Span;
+
+#[cfg(feature = "ahash")]
+use ahash::AHashMap as HashMap;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use rmp_serde::Serializer as MpSerializer;
 use serde::Serialize;
+#[cfg(not(feature = "ahash"))]
+use std::collections::HashMap;
 use std::{
-    collections::HashMap,
     ops::DerefMut,
     sync::{Arc, Mutex, mpsc},
     thread::sleep,

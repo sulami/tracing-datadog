@@ -1,5 +1,9 @@
+#[cfg(feature = "ahash")]
+use ahash::AHashMap as HashMap;
 use serde::Serialize;
-use std::{borrow::Cow, collections::HashMap, fmt::Debug};
+#[cfg(not(feature = "ahash"))]
+use std::collections::HashMap;
+use std::{borrow::Cow, fmt::Debug};
 use tracing_core::{Field, field::Visit};
 
 /// The v0.4 Datadog trace API format for spans.
