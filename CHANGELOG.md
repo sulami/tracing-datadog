@@ -1,8 +1,36 @@
+## [0.5.0] - 2025-11-24
+
+### 🚀 Features
+
+- [**breaking**] Handle distributed trace context in a generic way
+- Use tracing to report trace export errors
+- Optionally use AHash for hash maps
+
+### 🐛 Bug Fixes
+
+- Shut down the exporter thread if the tracer has been dropped
+
+### 💼 Other
+
+- Include the http feature on docs.rs builds
+
+### 🚜 Refactor
+
+- Serialize trace chunks in one go
+- Store log trace context in one field
+
+### ⚡ Performance
+
+- Borrow span tag maps for serialization
 ## [0.4.3] - 2025-11-21
 
 ### 🐛 Bug Fixes
 
 - Set even more sampling-related tags to ensure sampling
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.4.3
 ## [0.4.2] - 2025-11-21
 
 ### 🚀 Features
