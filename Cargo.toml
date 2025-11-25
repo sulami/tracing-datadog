@@ -27,3 +27,6 @@ tracing-subscriber = { version = "0.3", default-features = false, features = ["s
 
 [dev-dependencies]
 tracing-subscriber = { version = "0.3", default-features = false, features = ["std", "registry"] }
+
+[package.metadata.docs.rs]
+features = ["http"]
