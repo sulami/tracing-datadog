@@ -1,3 +1,12 @@
+## [0.5.1] - 2025-11-25
+
+### 💼 Other
+
+- *(deps)* Bump http from 1.3.1 to 1.4.0
+
+### 📚 Documentation
+
+- Fix the docs.rs build
 ## [0.5.0] - 2025-11-24
 
 ### 🚀 Features
@@ -22,6 +31,10 @@
 ### ⚡ Performance
 
 - Borrow span tag maps for serialization
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.5.0
 ## [0.4.3] - 2025-11-21
 
 ### 🐛 Bug Fixes
