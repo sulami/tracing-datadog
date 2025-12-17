@@ -12,7 +12,7 @@ pub(crate) struct Log {
     pub timestamp: Timestamp,
     pub level: Level,
     pub message: String,
-    pub trace_context: Option<(u64, u64)>,
+    pub trace_context: Option<(u128, u64)>,
     pub fields: HashMap<Cow<'static, str>, String>,
 }
 

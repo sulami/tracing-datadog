@@ -106,7 +106,7 @@ where
                     .expect("Parent span didn't have a DatadogSpan extension, this is a bug")
                     .trace_id
             })
-            .unwrap_or(rand::random_range(1..=u64::MAX));
+            .unwrap_or(rand::random_range(1..=u128::MAX));
 
         debug_assert!(trace_id != 0, "Trace ID is zero, this is a bug");
 

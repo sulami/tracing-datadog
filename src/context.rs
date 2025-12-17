@@ -145,8 +145,7 @@ impl TracingContextExt for tracing::Span {
                 return;
             };
             get_context.with_context(subscriber, id, &mut |dd_span| {
-                // NB Trace IDs can be 128-bit nowadays, but the 0.4 API still uses 64-bit.
-                dd_span.trace_id = context.trace_id as u64;
+                dd_span.trace_id = context.trace_id;
                 dd_span.parent_id = context.parent_id;
             })
         });
@@ -161,8 +160,7 @@ impl TracingContextExt for tracing::Span {
             };
             get_context.with_context(subscriber, id, &mut |dd_span| {
                 ctx = Some(DatadogContext {
-                    // NB Trace IDs can be 128-bit nowadays, but the 0.4 API still uses 64-bit.
-                    trace_id: dd_span.trace_id as u128,
+                    trace_id: dd_span.trace_id,
                     parent_id: dd_span.span_id,
                 })
             });
@@ -195,7 +193,7 @@ mod tests {
             || {
                 let context = DatadogContext {
                     // Need to limit the size here as we only track 64-bit trace IDs.
-                    trace_id: random_range(1..=u64::MAX) as u128,
+                    trace_id: random_range(1..=u128::MAX),
                     parent_id: random_range(1..=u64::MAX),
                 };
 
