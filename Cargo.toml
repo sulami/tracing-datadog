@@ -5,7 +5,7 @@ edition = "2024"
 description = "tracing subscriber for DataDog"
 categories = ["development-tools::debugging", "development-tools::profiling"]
 repository = "https://github.com/sulami/tracing-datadog"
-license-file = "LICENSE"
+license = "MIT"
 
 [features]
 default = []
