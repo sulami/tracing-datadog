@@ -12,7 +12,7 @@ updates:
     # Certain groups of dependencies rely on each others' versions, so should
     # be bumped together.
     groups:
-      otel:
+      tracing:
         patterns:
           - tracing
           - tracing-*
