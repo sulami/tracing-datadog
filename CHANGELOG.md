@@ -1,3 +1,18 @@
+## [0.6.0] - 2025-12-18
+
+### 🚀 Features
+
+- Add support for 128-bit trace IDs
+
+### 💼 Other
+
+- Properly tag the license as MIT
+- *(deps)* Bump reqwest from 0.12.24 to 0.12.26
+- *(deps)* Bump the tracing group with 3 updates
+
+### 🧪 Testing
+
+- Add snapshot tests for span serialization
 ## [0.5.1] - 2025-11-25
 
 ### 💼 Other
@@ -7,6 +22,10 @@
 ### 📚 Documentation
 
 - Fix the docs.rs build
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.5.1
 ## [0.5.0] - 2025-11-24
 
 ### 🚀 Features
