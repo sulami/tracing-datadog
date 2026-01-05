@@ -1,3 +1,13 @@
+## [0.6.1] - 2026-01-05
+
+### 💼 Other
+
+- *(deps)* Bump the tracing group with 2 updates
+- *(deps)* Bump rmp-serde from 1.3.0 to 1.3.1
+- *(deps)* Bump jiff from 0.2.16 to 0.2.17
+- *(deps)* Bump serde_json from 1.0.145 to 1.0.148
+- *(deps)* Bump reqwest from 0.12.26 to 0.13.1
+- *(deps)* Remove a stray ryu dependency
 ## [0.6.0] - 2025-12-18
 
 ### 🚀 Features
@@ -13,6 +23,10 @@
 ### 🧪 Testing
 
 - Add snapshot tests for span serialization
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.6.0
 ## [0.5.1] - 2025-11-25
 
 ### 💼 Other
