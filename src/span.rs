@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use std::{borrow::Cow, fmt::Debug};
 use tracing_core::{Field, field::Visit};
 
-/// The v0.4 Datadog trace API format for spans.
+/// A span, which incidentally matches the v0.4 trace API format.
 #[derive(Default, Debug)]
 pub(crate) struct Span {
     pub trace_id: u128,
@@ -20,7 +20,7 @@ pub(crate) struct Span {
     pub r#type: String,
     pub resource: String,
     pub meta: HashMap<Cow<'static, str>, String>,
-    pub metrics: HashMap<&'static str, f64>,
+    pub metrics: HashMap<Cow<'static, str>, f64>,
     pub span_links: Vec<SpanLink>,
     pub error_code: i32,
 }

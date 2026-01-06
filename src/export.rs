@@ -20,14 +20,43 @@ const DATADOG_TRACER_VERSION_HEADER: HeaderName =
 const DATADOG_TRACE_COUNT_HEADER: HeaderName = HeaderName::from_static("x-datadog-trace-count");
 const DATADOG_CONTAINER_ID_HEADER: HeaderName = HeaderName::from_static("datadog-container-id");
 
+/// The different versions of the Datadog trace API.
+///
+/// This maps to <https://github.com/DataDog/datadog-agent/blob/main/pkg/trace/api/version.go>.
+#[derive(Copy, Clone)]
+#[non_exhaustive]
+pub enum ApiVersion {
+    /// v0.4 sends all trace chunks as-is, as a big array.
+    ///
+    /// This is the default.
+    V04,
+}
+
+impl ApiVersion {
+    /// Returns the URL path for the given API version.
+    fn url_path(&self) -> &'static str {
+        match self {
+            Self::V04 => "/v0.4/traces",
+        }
+    }
+
+    /// Returns a function that produces a payload for the given API version.
+    fn serializer(&self) -> SerializerFn {
+        match self {
+            Self::V04 => v04_trace_api_payload,
+        }
+    }
+}
+
 pub(crate) fn exporter(
     agent_address: String,
+    api_version: ApiVersion,
     buffer: Arc<Mutex<Vec<Span>>>,
     container_id: Option<HeaderValue>,
     shutdown_signal: mpsc::Receiver<()>,
 ) -> impl FnOnce() {
     move || {
-        let url = format!("http://{}/v0.4/traces", agent_address);
+        let url = format!("http://{}{}", agent_address, api_version.url_path());
         let client = {
             let mut default_headers = HeaderMap::new();
 
@@ -43,14 +72,7 @@ pub(crate) fn exporter(
         };
         let mut spans = Vec::new();
 
-        loop {
-            if matches!(
-                shutdown_signal.try_recv(),
-                Ok(()) | Err(mpsc::TryRecvError::Disconnected)
-            ) {
-                break;
-            }
-
+        while let Err(mpsc::TryRecvError::Empty) = shutdown_signal.try_recv() {
             sleep(Duration::from_secs(1));
 
             std::mem::swap(&mut spans, buffer.lock().unwrap().deref_mut());
@@ -59,18 +81,13 @@ pub(crate) fn exporter(
                 continue;
             }
 
-            let mut body = vec![];
-
-            let trace_chunks = group_traces(spans.drain(..)).collect::<Vec<_>>();
-            let _ = trace_chunks
-                .serialize(&mut MpSerializer::new(&mut body).with_struct_map())
-                .inspect_err(|error| tracing::error!(?error, "Error serializing spans"));
+            let (body, trace_count) = api_version.serializer()(&mut spans);
 
             let _ = client
                 .post(&url)
                 .header(DATADOG_TRACER_VERSION_HEADER, env!("CARGO_PKG_VERSION"))
                 .header(DATADOG_LANGUAGE_HEADER, "rust")
-                .header(DATADOG_TRACE_COUNT_HEADER, trace_chunks.len())
+                .header(DATADOG_TRACE_COUNT_HEADER, trace_count)
                 .header(header::CONTENT_TYPE, "application/msgpack")
                 .body(body)
                 .send()
@@ -89,4 +106,22 @@ fn group_traces(spans: impl Iterator<Item = Span>) -> impl Iterator<Item = Vec<S
             .push(span);
     });
     traces.into_values()
+}
+
+/// The type of a function that produces a payload for a given API version.
+type SerializerFn = fn(&mut Vec<Span>) -> (Vec<u8>, usize);
+
+/// Produces the payload for the v0.4 Datadog trace API.
+///
+/// Also returns the number of traces serialized.
+fn v04_trace_api_payload(spans: &mut Vec<Span>) -> (Vec<u8>, usize) {
+    let mut payload = vec![];
+
+    let trace_chunks = group_traces(spans.drain(..)).collect::<Vec<_>>();
+
+    let _ = trace_chunks
+        .serialize(&mut MpSerializer::new(&mut payload).with_struct_map())
+        .inspect_err(|error| tracing::error!(?error, "Error serializing spans"));
+
+    (payload, trace_chunks.len())
 }

@@ -8,4 +8,5 @@ mod layer;
 mod log;
 mod span;
 
+pub use export::ApiVersion;
 pub use layer::{BuilderError, DatadogTraceLayer, DatadogTraceLayerBuilder};

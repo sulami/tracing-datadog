@@ -1,3 +1,4 @@
+use crate::export::ApiVersion;
 use crate::{
     log::{FieldVisitor, Log},
     span::{Span, SpanAttributeVisitor, SpanLink},
@@ -64,6 +65,7 @@ where
             service: None,
             default_tags: HashMap::from_iter([("span.kind".into(), "internal".to_string())]),
             agent_address: None,
+            api_version: ApiVersion::V04,
             container_id: None,
             logging_enabled: false,
             phantom_data: Default::default(),
@@ -126,15 +128,15 @@ where
                 let mut m = HashMap::new();
                 if span.parent().is_none() {
                     // Special tag to mark the service entry span.
-                    m.insert("_dd.top_level", 1.0);
-                    m.insert("_dd.agent_psr", 1.0);
-                    m.insert("_dd.rule_psr", 1.0);
-                    m.insert("_dd.limit_psr", 1.0);
-                    m.insert("_sample_rate", 1.0);
-                    m.insert("_dd.tracer_kr", 1.0);
+                    m.insert("_dd.top_level".into(), 1.0);
+                    m.insert("_dd.agent_psr".into(), 1.0);
+                    m.insert("_dd.rule_psr".into(), 1.0);
+                    m.insert("_dd.limit_psr".into(), 1.0);
+                    m.insert("_sample_rate".into(), 1.0);
+                    m.insert("_dd.tracer_kr".into(), 1.0);
                 }
-                m.insert("_sampling_priority_v1", 2.0);
-                m.insert("process_id", std::process::id() as f64);
+                m.insert("_sampling_priority_v1".into(), 2.0);
+                m.insert("process_id".into(), std::process::id() as f64);
                 m
             },
             ..Default::default()
@@ -247,8 +249,8 @@ where
             if let Some("server" | "client" | "consumer" | "producer") =
                 dd_span.meta.get("span.kind").map(String::as_str)
             {
-                dd_span.metrics.insert("_dd.measured", 1.0);
-                dd_span.metrics.insert("_dd1.sr.eausr", 1.0);
+                dd_span.metrics.insert("_dd.measured".into(), 1.0);
+                dd_span.metrics.insert("_dd1.sr.eausr".into(), 1.0);
             }
 
             self.buffer.lock().unwrap().push(dd_span);
@@ -273,6 +275,7 @@ pub struct DatadogTraceLayerBuilder<S> {
     service: Option<String>,
     default_tags: HashMap<Cow<'static, str>, String>,
     agent_address: Option<String>,
+    api_version: ApiVersion,
     container_id: Option<String>,
     logging_enabled: bool,
     phantom_data: PhantomData<S>,
@@ -315,6 +318,12 @@ where
     /// Sets the `agent_address`. This is required.
     pub fn agent_address(mut self, agent_address: impl Into<String>) -> Self {
         self.agent_address = Some(agent_address.into());
+        self
+    }
+
+    /// Sets the Datadog trace agent API version. Defaults to [`ApiVersion::V04`].
+    pub fn api_version(mut self, api_version: ApiVersion) -> Self {
+        self.api_version = api_version;
         self
     }
 
@@ -372,6 +381,7 @@ where
 
         spawn(crate::export::exporter(
             agent_address,
+            self.api_version,
             buffer.clone(),
             container_id,
             shutdown_rx,
