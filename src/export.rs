@@ -1,4 +1,5 @@
 mod span;
+mod tracer_payload;
 
 use crate::span::Span as InternalSpan;
 #[cfg(feature = "ahash")]
@@ -32,6 +33,8 @@ pub enum ApiVersion {
     ///
     /// This is the default.
     V04,
+    /// v0.7 introduces the tracer payload wrapping structure around trace chunks.
+    V07,
 }
 
 impl ApiVersion {
@@ -39,6 +42,7 @@ impl ApiVersion {
     fn url_path(&self) -> &'static str {
         match self {
             Self::V04 => "/v0.4/traces",
+            Self::V07 => "/v0.7/traces",
         }
     }
 
@@ -46,6 +50,7 @@ impl ApiVersion {
     fn serializer(&self) -> SerializerFn {
         match self {
             Self::V04 => v04_trace_api_payload,
+            Self::V07 => v07_trace_api_payload,
         }
     }
 }
@@ -112,12 +117,11 @@ fn group_traces(
     traces.into_values()
 }
 
-/// The type of a function that produces a payload for a given API version.
+/// The type of function that produces a payload for a given API version. Also returns the number
+/// of traces serialized.
 type SerializerFn = fn(&mut Vec<InternalSpan>) -> (Vec<u8>, usize);
 
 /// Produces the payload for the v0.4 Datadog trace API.
-///
-/// Also returns the number of traces serialized.
 fn v04_trace_api_payload(spans: &mut Vec<InternalSpan>) -> (Vec<u8>, usize) {
     let mut payload = vec![];
 
@@ -128,4 +132,17 @@ fn v04_trace_api_payload(spans: &mut Vec<InternalSpan>) -> (Vec<u8>, usize) {
         .inspect_err(|error| tracing::error!(?error, "Error serializing spans"));
 
     (payload, trace_chunks.len())
+}
+
+/// Produces the payload for the v0.7 Datadog trace API.
+fn v07_trace_api_payload(spans: &mut Vec<InternalSpan>) -> (Vec<u8>, usize) {
+    let mut payload = vec![];
+
+    let tracer_payload = tracer_payload::TracerPayload::from_iter(spans.drain(..));
+
+    let _ = tracer_payload
+        .serialize(&mut MpSerializer::new(&mut payload).with_struct_map())
+        .inspect_err(|error| tracing::error!(?error, "Error serializing spans"));
+
+    (payload, tracer_payload.trace_count())
 }
