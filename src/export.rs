@@ -1,10 +1,12 @@
-use crate::span::Span;
+mod span;
 
+use crate::span::Span as InternalSpan;
 #[cfg(feature = "ahash")]
 use ahash::AHashMap as HashMap;
 use reqwest::header::{self, HeaderMap, HeaderName, HeaderValue};
 use rmp_serde::Serializer as MpSerializer;
 use serde::Serialize;
+use span::Span as ExportSpan;
 #[cfg(not(feature = "ahash"))]
 use std::collections::HashMap;
 use std::{
@@ -51,7 +53,7 @@ impl ApiVersion {
 pub(crate) fn exporter(
     agent_address: String,
     api_version: ApiVersion,
-    buffer: Arc<Mutex<Vec<Span>>>,
+    buffer: Arc<Mutex<Vec<InternalSpan>>>,
     container_id: Option<HeaderValue>,
     shutdown_signal: mpsc::Receiver<()>,
 ) -> impl FnOnce() {
@@ -97,24 +99,26 @@ pub(crate) fn exporter(
 }
 
 /// Groups spans into trace chunks.
-fn group_traces(spans: impl Iterator<Item = Span>) -> impl Iterator<Item = Vec<Span>> {
+fn group_traces(
+    spans: impl Iterator<Item = InternalSpan>,
+) -> impl Iterator<Item = Vec<ExportSpan>> {
     let mut traces = HashMap::new();
     spans.for_each(|span| {
         traces
             .entry(span.trace_id)
             .or_insert_with(Vec::new)
-            .push(span);
+            .push(ExportSpan::from(span));
     });
     traces.into_values()
 }
 
 /// The type of a function that produces a payload for a given API version.
-type SerializerFn = fn(&mut Vec<Span>) -> (Vec<u8>, usize);
+type SerializerFn = fn(&mut Vec<InternalSpan>) -> (Vec<u8>, usize);
 
 /// Produces the payload for the v0.4 Datadog trace API.
 ///
 /// Also returns the number of traces serialized.
-fn v04_trace_api_payload(spans: &mut Vec<Span>) -> (Vec<u8>, usize) {
+fn v04_trace_api_payload(spans: &mut Vec<InternalSpan>) -> (Vec<u8>, usize) {
     let mut payload = vec![];
 
     let trace_chunks = group_traces(spans.drain(..)).collect::<Vec<_>>();
