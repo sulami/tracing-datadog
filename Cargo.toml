@@ -16,7 +16,7 @@ http = ["dep:http"]
 ahash = { version = "0.8", optional = true, features = ["serde"] }
 http = { version = "1", optional = true }
 jiff = { version = "0.2", features = ["serde"] }
-rand = "0.9"
+rand = "0.10"
 reqwest = { version = "0.13", default-features = false, features = ["blocking"] }
 rmp-serde = "1"
 serde = "1"
