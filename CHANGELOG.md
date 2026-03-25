@@ -1,3 +1,21 @@
+## [0.6.2] - 2026-03-25
+
+### 🚀 Features
+
+- Add configuration for different trace API versions
+
+### 💼 Other
+
+- *(deps)* Bump jiff from 0.2.17 to 0.2.18
+- *(deps)* Bump rand from 0.9.2 to 0.10.0
+- *(deps)* Bump reqwest from 0.13.1 to 0.13.2
+- *(deps)* Bump bytes from 1.10.1 to 1.11.1
+- *(deps)* Bump jiff from 0.2.18 to 0.2.19
+- *(deps)* Bump serde_json from 1.0.148 to 1.0.149
+
+### 🚜 Refactor
+
+- Split span types into internal and export
 ## [0.6.1] - 2026-01-05
 
 ### 💼 Other
@@ -8,6 +26,10 @@
 - *(deps)* Bump serde_json from 1.0.145 to 1.0.148
 - *(deps)* Bump reqwest from 0.12.26 to 0.13.1
 - *(deps)* Remove a stray ryu dependency
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.6.1
 ## [0.6.0] - 2025-12-18
 
 ### 🚀 Features
