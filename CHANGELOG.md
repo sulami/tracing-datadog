@@ -1,3 +1,8 @@
+## [0.6.3] - 2026-03-26
+
+### 🐛 Bug Fixes
+
+- Require serde's derive feature
 ## [0.6.2] - 2026-03-25
 
 ### 🚀 Features
@@ -16,6 +21,10 @@
 ### 🚜 Refactor
 
 - Split span types into internal and export
+
+### ⚙️ Miscellaneous Tasks
+
+- Release tracing-datadog version 0.6.2
 ## [0.6.1] - 2026-01-05
 
 ### 💼 Other
