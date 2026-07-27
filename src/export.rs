@@ -55,6 +55,7 @@ pub(crate) fn exporter(
     api_version: ApiVersion,
     buffer: Arc<Mutex<Vec<InternalSpan>>>,
     container_id: Option<HeaderValue>,
+    pool_max_idle_per_host: Option<usize>,
     shutdown_signal: mpsc::Receiver<()>,
 ) -> impl FnOnce() {
     move || {
@@ -66,11 +67,15 @@ pub(crate) fn exporter(
                 default_headers.insert(DATADOG_CONTAINER_ID_HEADER, container_id);
             };
 
-            reqwest::blocking::Client::builder()
+            let mut builder = reqwest::blocking::Client::builder()
                 .default_headers(default_headers)
-                .retry(reqwest::retry::for_host(agent_address).max_retries_per_request(2))
-                .build()
-                .expect("Failed to build reqwest client")
+                .retry(reqwest::retry::for_host(agent_address).max_retries_per_request(2));
+
+            if let Some(max) = pool_max_idle_per_host {
+                builder = builder.pool_max_idle_per_host(max);
+            }
+
+            builder.build().expect("Failed to build reqwest client")
         };
         let mut spans = Vec::new();
 

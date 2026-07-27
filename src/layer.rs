@@ -68,6 +68,7 @@ where
             api_version: ApiVersion::V04,
             container_id: None,
             logging_enabled: false,
+            pool_max_idle_per_host: None,
             phantom_data: Default::default(),
         }
     }
@@ -278,6 +279,7 @@ pub struct DatadogTraceLayerBuilder<S> {
     api_version: ApiVersion,
     container_id: Option<String>,
     logging_enabled: bool,
+    pool_max_idle_per_host: Option<usize>,
     phantom_data: PhantomData<S>,
 }
 
@@ -354,6 +356,19 @@ where
         self
     }
 
+    /// Sets the maximum number of idle connections to keep per host.
+    ///
+    /// Set to `0` to disable connection pooling entirely, creating a fresh
+    /// connection for every flush. This prevents stale-connection errors that
+    /// occur when the Datadog agent closes keep-alive connections server-side
+    /// before the client's pool timeout.
+    ///
+    /// Defaults to `None`, which uses the reqwest default (unbounded).
+    pub fn pool_max_idle_per_host(mut self, max: impl Into<Option<usize>>) -> Self {
+        self.pool_max_idle_per_host = max.into();
+        self
+    }
+
     /// Consumes the builder to construct the tracing layer.
     pub fn build(self) -> Result<DatadogTraceLayer<S>, BuilderError> {
         let Some(service) = self.service else {
@@ -384,6 +399,7 @@ where
             self.api_version,
             buffer.clone(),
             container_id,
+            self.pool_max_idle_per_host,
             shutdown_rx,
         ));
 
