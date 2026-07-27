@@ -15,7 +15,7 @@ use std::{
     marker::PhantomData,
     sync::{Arc, Mutex, mpsc},
     thread::spawn,
-    time::{SystemTime, UNIX_EPOCH},
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 use tracing_core::{
     Event, Subscriber,
@@ -68,6 +68,7 @@ where
             api_version: ApiVersion::V04,
             container_id: None,
             logging_enabled: false,
+            pool_idle_timeout: None,
             phantom_data: Default::default(),
         }
     }
@@ -278,6 +279,7 @@ pub struct DatadogTraceLayerBuilder<S> {
     api_version: ApiVersion,
     container_id: Option<String>,
     logging_enabled: bool,
+    pool_idle_timeout: Option<Duration>,
     phantom_data: PhantomData<S>,
 }
 
@@ -354,6 +356,23 @@ where
         self
     }
 
+    /// Sets the idle timeout for HTTP connections to the Datadog agent.
+    ///
+    /// Connections that have been idle for longer than this duration are closed
+    /// before reuse. Set to `None` to use the reqwest default (90 seconds).
+    ///
+    /// When the agent closes idle keep-alive connections server-side before the
+    /// client's pool timeout, the next flush attempt on a stale connection will
+    /// fail with a connection error. Setting this shorter than the agent's
+    /// server-side keep-alive timeout prevents those errors.
+    ///
+    /// Use `Some(Duration::ZERO)` to disable connection pooling entirely,
+    /// creating a fresh connection for every flush.
+    pub fn pool_idle_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
+        self.pool_idle_timeout = timeout.into();
+        self
+    }
+
     /// Consumes the builder to construct the tracing layer.
     pub fn build(self) -> Result<DatadogTraceLayer<S>, BuilderError> {
         let Some(service) = self.service else {
@@ -384,6 +403,7 @@ where
             self.api_version,
             buffer.clone(),
             container_id,
+            self.pool_idle_timeout,
             shutdown_rx,
         ));
 
