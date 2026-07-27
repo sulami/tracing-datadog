@@ -15,7 +15,7 @@ use std::{
     marker::PhantomData,
     sync::{Arc, Mutex, mpsc},
     thread::spawn,
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{SystemTime, UNIX_EPOCH},
 };
 use tracing_core::{
     Event, Subscriber,
@@ -68,7 +68,7 @@ where
             api_version: ApiVersion::V04,
             container_id: None,
             logging_enabled: false,
-            pool_idle_timeout: None,
+            pool_max_idle_per_host: None,
             phantom_data: Default::default(),
         }
     }
@@ -279,7 +279,7 @@ pub struct DatadogTraceLayerBuilder<S> {
     api_version: ApiVersion,
     container_id: Option<String>,
     logging_enabled: bool,
-    pool_idle_timeout: Option<Duration>,
+    pool_max_idle_per_host: Option<usize>,
     phantom_data: PhantomData<S>,
 }
 
@@ -356,20 +356,16 @@ where
         self
     }
 
-    /// Sets the idle timeout for HTTP connections to the Datadog agent.
+    /// Sets the maximum number of idle connections to keep per host.
     ///
-    /// Connections that have been idle for longer than this duration are closed
-    /// before reuse. Set to `None` to use the reqwest default (90 seconds).
+    /// Set to `0` to disable connection pooling entirely, creating a fresh
+    /// connection for every flush. This prevents stale-connection errors that
+    /// occur when the Datadog agent closes keep-alive connections server-side
+    /// before the client's pool timeout.
     ///
-    /// When the agent closes idle keep-alive connections server-side before the
-    /// client's pool timeout, the next flush attempt on a stale connection will
-    /// fail with a connection error. Setting this shorter than the agent's
-    /// server-side keep-alive timeout prevents those errors.
-    ///
-    /// Use `Some(Duration::ZERO)` to disable connection pooling entirely,
-    /// creating a fresh connection for every flush.
-    pub fn pool_idle_timeout(mut self, timeout: impl Into<Option<Duration>>) -> Self {
-        self.pool_idle_timeout = timeout.into();
+    /// Defaults to `None`, which uses the reqwest default (unbounded).
+    pub fn pool_max_idle_per_host(mut self, max: impl Into<Option<usize>>) -> Self {
+        self.pool_max_idle_per_host = max.into();
         self
     }
 
@@ -403,7 +399,7 @@ where
             self.api_version,
             buffer.clone(),
             container_id,
-            self.pool_idle_timeout,
+            self.pool_max_idle_per_host,
             shutdown_rx,
         ));
 

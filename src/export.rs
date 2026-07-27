@@ -55,7 +55,7 @@ pub(crate) fn exporter(
     api_version: ApiVersion,
     buffer: Arc<Mutex<Vec<InternalSpan>>>,
     container_id: Option<HeaderValue>,
-    pool_idle_timeout: Option<Duration>,
+    pool_max_idle_per_host: Option<usize>,
     shutdown_signal: mpsc::Receiver<()>,
 ) -> impl FnOnce() {
     move || {
@@ -71,8 +71,8 @@ pub(crate) fn exporter(
                 .default_headers(default_headers)
                 .retry(reqwest::retry::for_host(agent_address).max_retries_per_request(2));
 
-            if let Some(timeout) = pool_idle_timeout {
-                builder = builder.pool_idle_timeout(timeout);
+            if let Some(max) = pool_max_idle_per_host {
+                builder = builder.pool_max_idle_per_host(max);
             }
 
             builder.build().expect("Failed to build reqwest client")
